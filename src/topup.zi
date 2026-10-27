@@ -463,8 +463,9 @@ FeeText :: (dew: s64, output: []u8) -> string {
     if dew <= 0 { return "Opens trocador.app in a new tab." }
     digits: [24]u8
     at: s64 = 0
-    if !Append(output, *at, "Opens trocador.app in a new tab. You pay the swap fee there and receive exactly ") ||
-    !Append(output, *at, FormatInteger(dew, digits[:])) || !Append(output, *at, " Dew.") { return "" }
+    if !Append(output, *at, "Opens trocador.app in a new tab. Trocador adds its swap fee to what you pay, so ") ||
+    !Append(output, *at, FormatInteger(dew, digits[:])) ||
+    !Append(output, *at, " Dew reach you; whatever Monero arrives becomes Dew.") { return "" }
     return TextUntilNul(output)
 }
 
