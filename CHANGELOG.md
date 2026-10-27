@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.2.2] - 2026-10-27
+
+- Sign in once for every waozi.xyz site: a profile signed in on Arcade, Apfelwurm or here is used by the others in the same browser, and logging out on one logs it out of the shared sign-in.
+
 ## [0.2.1] - 2026-10-27
 
 - The Profile opens even when a saved account key on this browser cannot be read; it says so, keeps the key aside and lets you sign in again.
