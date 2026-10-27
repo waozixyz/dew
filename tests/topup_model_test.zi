@@ -1,0 +1,53 @@
+#import "topup_model"
+#import "std/c_string"
+
+ADDRESS :: "8AbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCd"
+
+#program_export
+main :: () -> s32 {
+    // The live ratio: 10,000 Dew = 1 XMR, as the node reports it.
+    rate := DewRate.{1000000000000, 10000000000}
+    if DewAtomic(1, rate) != 100000000 { return 1 }
+    if DewAtomic(500, rate) != 50000000000 { return 2 }
+    if DewAtomic(0, rate) != -1 || DewAtomic(10000000, rate) != -1 { return 3 }
+    if DewAtomic(5, DewRate.{}) != -1 { return 4 }
+    // Trocador's 0.01 XMR floor is 100 Dew at this rate.
+    if DewAtLeast(TROCADOR_MINIMUM_ATOMIC, rate) != 100 { return 5 }
+    if DewAtLeast(TROCADOR_MINIMUM_ATOMIC + 1, rate) != 101 { return 6 }
+    // An older ratio (1,000 Dew = 1 XMR) still prices large amounts.
+    older := DewRate.{1000000000000, 1000000000}
+    if DewAtomic(DEW_MAXIMUM, older) != 9999999000000000 { return 7 }
+    if DewAtLeast(TROCADOR_MINIMUM_ATOMIC, older) != 10 { return 8 }
+    // A rate that does not divide evenly rounds the price up.
+    thirds := DewRate.{1000000000000, 3000000000}
+    if DewAtomic(1, thirds) != 333333334 { return 9 }
+
+    text: [64]u8
+    if XmrText(50000000000, text[:]) != "0.05 XMR" { return 10 }
+    if XmrText(1000000000000, text[:]) != "1 XMR" { return 11 }
+    if UsdCents(50000000000, 59078) != 2953 { return 12 }
+    if UsdCents(3000000000000000, 59078) != 177234000 { return 13 }
+    if UsdText(2953, text[:]) != "about $29.53" { return 14 }
+    if UsdText(5, text[:]) != "about $0.05" || UsdText(0, text[:]) != "" { return 15 }
+
+    if DewTyped("250") != 250 || DewTyped("") != 0 || DewTyped("12a") != 0 || DewTyped("12345678") != 0 { return 16 }
+
+    rates: DewRates
+    if !DewParseRates("{\"xmr_usd_cents\":59078,\"updated_at\":1793118020,\"sources\":[\"kraken\"],\"xmr_atomic_units\":1000000000000,\"token_units\":10000000000}", *rates) { return 17 }
+    if rates.usd_cents != 59078 || rates.rate.atomic != 1000000000000 || rates.rate.units != 10000000000 { return 18 }
+    if DewParseRates("{\"xmr_usd_cents\":59078}", *rates) || DewParseRates("", *rates) { return 19 }
+    if !DewParseRates("{\"xmr_usd_cents\":0,\"xmr_atomic_units\":1,\"token_units\":2}", *rates) || rates.usd_cents != 0 { return 20 }
+
+    link: [512]u8
+    if MoneroUri(ADDRESS, 50000000000, link[:]) != "monero:8AbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCd?tx_amount=0.05&tx_description=Dew" { return 21 }
+    if MoneroUri(ADDRESS, 0, link[:]) != "monero:8AbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCd" { return 22 }
+    if MoneroUri("8bad&address", 1, link[:]) != "" { return 23 }
+    expected := "https://trocador.app/anonpay/?ticker_to=xmr&network_to=Mainnet&address=8AbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCd&amount=0.05&name=Dew&description=500%20Dew&simple_mode=True&remove_direct_pay=True&buttonbgcolor=2f9fc4&textcolor=ffffff"
+    if TrocadorUrl(ADDRESS, 50000000000, 500, link[:]) != expected { return 24 }
+    // Below Trocador's floor there is no link; Monero takes any amount.
+    if TrocadorUrl(ADDRESS, TROCADOR_MINIMUM_ATOMIC - 1, 99, link[:]) != "" { return 25 }
+    if TrocadorUrl("8AbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCd&email=x", 50000000000, 500, link[:]) != "" { return 26 }
+    short: [40]u8
+    if TrocadorUrl(ADDRESS, 50000000000, 500, short[:]) != "" { return 27 }
+    return 0
+}

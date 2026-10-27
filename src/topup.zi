@@ -1,0 +1,480 @@
+// dew.waozi.xyz: one focused page for buying Dew, the currency every Waozi
+// app shares. The account comes from Entity's shared Profile, whose provider
+// keeps the keys; this page only reads the balance and the account's own
+// Monero address from the node and draws them.
+#import "topup_model"
+#import "entity/native_host"
+#import "entity/dew_model"
+#import "qrcode/qrcode"
+#import "kryon/session"
+#import "kryon/geometry"
+#import "kryon/text_props"
+#import "kryon/text_align"
+#import "kryon/text_widget"
+#import "kryon/text_measure"
+#import "kryon/text_input_props"
+#import "kryon/text_field_widget"
+#import "kryon/button_props"
+#import "kryon/button_widget"
+#import "kryon/control_props"
+#import "kryon/scroll_props"
+#import "kryon/scroll_widget"
+#import "kryon/tree"
+#import "kryon/box_props"
+#import "kryon/box_widget"
+#import "kryon/drawing_props"
+#import "kryon/svg_icon_props"
+#import "kryon/svg_icon_widget"
+#import "kryon/widget_palette"
+#import "kryon/system_clipboard"
+#import "kryon/open_uri"
+#import "kryon/http_transfer"
+#import "std/net_http"
+#import "std/c_string"
+#import "std/text_buffer"
+#import "std/number_text"
+
+TOPUP_NONE :: 0
+TOPUP_SIGN_IN :: 1
+TOPUP_PROFILE :: 2
+
+DEW_BACKGROUND :: 0x0e1a20ff
+DEW_CARD :: 0x172a33ff
+DEW_ACCENT :: 0x2f9fc4ff
+
+// The water drop Entity draws for Dew.
+DROP_SHAPE :: "S1.7rr:M12 3C10 6 5 11 5 15C5 24 19 24 19 15C19 11 14 6 12 3ZM8 15C8 18 10 19 12 19"
+
+DewPalette :: () -> WidgetPalette {
+    return WidgetPalette.{.background = cast(u32)DEW_BACKGROUND, .base = cast(u32)0x223a45ff,
+        .text = cast(u32)0xe8f3f7ff, .selected = cast(u32)DEW_ACCENT,
+        .selected_text = cast(u32)0xffffffff, .border = cast(u32)0x3a5562ff,
+        .danger = cast(u32)0xff8a7aff, .warning = cast(u32)0xffca0cff,
+        .success = cast(u32)0x4cc38aff, .material = true}
+}
+
+AmountField :: struct { cursor: s32; anchor: s32; scroll_x: s32; focused: bool }
+
+DEW_PRESETS: [4]s64 = .[100, 500, 1000, 5000];
+// The chosen preset, or -1 while the typed amount counts.
+topup_preset: s32 = 1;
+topup_typed: [16]u8;
+topup_field: AmountField;
+topup_scroll: s32;
+topup_content_height: float32 = 1600.0;
+topup_card_heights: [4]float32 = .[180.0, 200.0, 420.0, 260.0];
+topup_copied_until: float64;
+topup_refreshed_at: float64 = -100000.0;
+topup_address_at: float64 = -100000.0;
+
+// The node's public rate and dollar price, fetched every ten minutes.
+topup_rates: DewRates;
+topup_rates_known: bool;
+topup_rates_running: bool;
+topup_rates_at: float64 = -1000000.0;
+topup_rates_transfer: HttpTransfer;
+topup_rates_answer: [4096]u8;
+
+// The QR code of the current wallet link, built only when the link changes.
+QrRect :: struct { column: s32; row: s32; width: s32; height: s32 }
+QR_RECTS :: 2048
+topup_qr: QrCode;
+topup_qr_text: [512]u8;
+topup_qr_valid: bool;
+topup_qr_rects: [QR_RECTS]QrRect;
+topup_qr_count: s32;
+
+topup_link: [1024]u8;
+topup_wallet: [512]u8;
+
+// Keeps the balance, address and rate fresh. Requests share Entity's one
+// Dew queue, so each waits for the previous to finish.
+TopupPump :: (now: float64) {
+    TopupRatesPump(now)
+    status := EntityHostDewStatus()
+    if !status.ready || status.busy { return }
+    if !status.known && now - topup_refreshed_at > 10000.0 {
+        if EntityHostDewRequest("refresh") { topup_refreshed_at = now }
+        return
+    }
+    if !status.funded && status.funding_allowed && now - topup_address_at > 15000.0 {
+        if EntityHostDewRequest("address") { topup_address_at = now }
+        return
+    }
+    if now - topup_refreshed_at > 30000.0 {
+        if EntityHostDewRequest("refresh") { topup_refreshed_at = now }
+    }
+}
+
+TopupRatesPump :: (now: float64) {
+    if topup_rates_running {
+        status: s32
+        done := HttpTransferPoll(*topup_rates_transfer, *status)
+        if done < 0 { return }
+        topup_rates_running = false
+        rates: DewRates
+        if done == 1 && status == 200 && DewParseRates(TextUntilNul(topup_rates_answer[:]), *rates) {
+            topup_rates = rates
+            topup_rates_known = true
+        }
+        HttpTransferCancel(*topup_rates_transfer)
+        return
+    }
+    if now - topup_rates_at < 600000.0 { return }
+    topup_rates_at = now
+    request := HttpRequest.{.method = "GET", .url = "https://api.waozi.xyz/api/v1/rates", .accept = "application/json"}
+    topup_rates_answer = .{}
+    topup_rates_running = HttpTransferStart(*topup_rates_transfer, request, topup_rates_answer[:], 20000)
+}
+
+// Draws the page; returns TOPUP_SIGN_IN or TOPUP_PROFILE when the Profile
+// should open.
+TopupFrame :: (session: Session, viewport: Rectangle, input: TextFieldInput, now: float64) -> s32 {
+    action: s32 = TOPUP_NONE
+    status := EntityHostDewStatus()
+    rate := ifx status.funded then DewRate.{status.funding.atomic, status.funding.units} else topup_rates.rate
+    usd := ifx topup_rates_known then topup_rates.usd_cents else cast(s64)0
+    dew := ifx topup_preset >= 0 then DEW_PRESETS[topup_preset] else DewTyped(TextUntilNul(topup_typed[:]))
+    atomic := DewAtomic(dew, rate)
+    minimum := DewAtLeast(TROCADOR_MINIMUM_ATOMIC, rate)
+
+    Box(session, BoxProps.{.key = cast(u64)60000, .bounds = viewport, .fill = ColorFromPacked(cast(u32)DEW_BACKGROUND)})
+    scroll := Scroll(session, ScrollProps.{.key = cast(u64)60001, .bounds = viewport,
+            .content_height = cast(s32)topup_content_height, .scroll_offset = topup_scroll})
+    topup_scroll = scroll.scroll_offset
+    if !scroll.opened { return action }
+    defer { unused End(session) }
+    column := scroll.content.width - 32.0
+    if column > 560.0 { column = 560.0 }
+    x := scroll.content.x + (scroll.content.width - column) * 0.5
+    y := scroll.content.y + 28.0
+    top := y
+
+    // Title row: the drop, "Dew", and the Profile.
+    Box(session, BoxProps.{.key = cast(u64)60002, .bounds = Rectangle.{x, y, 48.0, 48.0},
+            .fill = ColorFromPacked(cast(u32)DEW_ACCENT), .radius = 24.0})
+    SvgIcon(session, SvgIconProps.{.shape = DROP_SHAPE, .color = Color.{255, 255, 255, 255},
+            .bounds = Rectangle.{x + 12.0, y + 11.0, 24.0, 26.0}})
+    Text(session, TextProps.{.key = cast(u64)60003, .text = "Dew", .font = 32,
+            .bounds = Rectangle.{x + 62.0, y + 4.0, column - 200.0, 40.0}})
+    profile_label := ifx status.ready then "Profile" else "Sign in"
+    if Button(session, ButtonProps.{.key = cast(u64)60004, .id = 60004, .label = profile_label,
+            .bounds = Rectangle.{x + column - 120.0, y + 4.0, 120.0, 40.0},
+            .tone = ButtonTone.ButtonToneAccent, .emphasis = ButtonEmphasis.ButtonEmphasisSoft}) != 0 {
+        action = ifx status.ready then TOPUP_PROFILE else TOPUP_SIGN_IN
+    }
+    y += 62.0
+    Line(session, 60005, "One currency for every Waozi app. Top it up here with Monero or almost any other coin.", x, *y, column, 17, 26.0)
+
+    // The balance.
+    inner := column - 36.0
+    card_y := y
+    Card(session, 60010, x, y, column, topup_card_heights[0])
+    y += 18.0
+    if !status.ready {
+        Line(session, 60011, "Sign in with your Waozi profile to see your Dew and top it up.", x + 18.0, *y, inner, 18, 10.0)
+        Line(session, 60012, "Use the same profile as in Inner Breeze, Arcade or Shovey: link this browser from the app, or import your key.", x + 18.0, *y, inner, 14, 14.0)
+        if Button(session, ButtonProps.{.key = cast(u64)60013, .id = 60013, .label = "Sign in",
+                .bounds = Rectangle.{x + 18.0, y, inner, 48.0}, .tone = ButtonTone.ButtonToneAccent}) != 0 {
+            action = TOPUP_SIGN_IN
+        }
+        y += 48.0
+    } else {
+        Line(session, 60014, "Your balance", x + 18.0, *y, inner, 14, 4.0)
+        amount: [64]u8
+        balance := "…"
+        if status.known && DewFormat(status.account.balance, DewUnits, amount[:], "Dew") { balance = TextUntilNul(amount[:]) }
+        Line(session, 60015, balance, x + 18.0, *y, inner, 34, 6.0)
+        if status.known {
+            worth: [160]u8
+            Line(session, 60016, WorthText(status.account.balance, rate, usd, worth[:]), x + 18.0, *y, inner, 15, 8.0)
+        }
+        who := TextUntilNul(status.alias[:])
+        if who == "" { who = TextUntilNul(status.name[:]) }
+        if who != "" {
+            signed: [128]u8
+            Line(session, 60017, Joined("Signed in as ", who, signed[:]), x + 18.0, *y, inner, 14, 4.0)
+        }
+        if status.error {
+            Line(session, 60018, "The node did not answer. The balance shown is the last one it confirmed.", x + 18.0, *y, inner, 14, 4.0)
+        }
+    }
+    y += 18.0
+    topup_card_heights[0] = y - card_y
+    y += 16.0
+
+    // How much Dew.
+    card_y = y
+    Card(session, 60020, x, y, column, topup_card_heights[1])
+    y += 18.0
+    Line(session, 60021, "How much Dew?", x + 18.0, *y, inner, 21, 12.0)
+    gap: float32 = 8.0
+    chip := (inner - gap * 3.0) / 4.0
+    for index: 0..3 {
+        label: [24]u8
+        if Button(session, ButtonProps.{.key = cast(u64)(60022 + index), .id = 60022 + cast(s32)index,
+                .label = FormatInteger(DEW_PRESETS[index], label[:]),
+                .bounds = Rectangle.{x + 18.0 + cast(float32)index * (chip + gap), y, chip, 46.0},
+                .selected = topup_preset == cast(s32)index, .tone = ButtonTone.ButtonToneAccent,
+                .emphasis = ifx topup_preset == cast(s32)index then ButtonEmphasis.ButtonEmphasisFilled else ButtonEmphasis.ButtonEmphasisOutline}) != 0 {
+            topup_preset = cast(s32)index
+            topup_typed = .{}
+            topup_field = .{}
+        }
+    }
+    y += 56.0
+    if AmountInput(session, Rectangle.{x + 18.0, y, inner, 46.0}, input) && topup_typed[0] != cast(u8)0 { topup_preset = -1 }
+    if topup_field.focused && topup_typed[0] != cast(u8)0 { topup_preset = -1 }
+    y += 56.0
+    summary: [192]u8
+    Line(session, 60027, AmountText(dew, atomic, usd, summary[:]), x + 18.0, *y, inner, 16, 0.0)
+    y += 18.0
+    topup_card_heights[1] = y - card_y
+    y += 16.0
+
+    // Monero, any amount.
+    card_y = y
+    Card(session, 60030, x, y, column, topup_card_heights[2])
+    y += 18.0
+    Line(session, 60031, "Pay with Monero", x + 18.0, *y, inner, 21, 8.0)
+    Line(session, 60032, "Any amount works. You get Dew for exactly the Monero that arrives.", x + 18.0, *y, inner, 15, 14.0)
+    if !status.ready {
+        Line(session, 60033, "Sign in to see your own Monero address.", x + 18.0, *y, inner, 15, 0.0)
+    } else if !status.funded {
+        Line(session, 60034, ifx status.error then "Your address could not be loaded yet. Trying again…" else "Getting your address…", x + 18.0, *y, inner, 15, 0.0)
+    } else {
+        address := TextUntilNul(status.funding.address[:])
+        wallet := MoneroUri(address, ifx atomic > 0 then atomic else cast(s64)0, topup_wallet[:])
+        side := DrawQr(session, wallet, x + 18.0, y, inner)
+        if side > 0.0 { y += side + 14.0 }
+        Line(session, 60035, address, x + 18.0, *y, inner, 15, 12.0)
+        copied := now < topup_copied_until
+        if Button(session, ButtonProps.{.key = cast(u64)60036, .id = 60036, .label = ifx copied then "Copied" else "Copy address",
+                .bounds = Rectangle.{x + 18.0, y, inner, 46.0}, .tone = ButtonTone.ButtonToneAccent,
+                .emphasis = ButtonEmphasis.ButtonEmphasisSoft}) != 0 {
+            if SystemClipboardSet(address) { topup_copied_until = now + 2000.0 }
+        }
+        y += 58.0
+        wait: [160]u8
+        Line(session, 60037, ConfirmationText(status.funding.confirmations, wait[:]), x + 18.0, *y, inner, 14, 0.0)
+    }
+    y += 18.0
+    topup_card_heights[2] = y - card_y
+    y += 16.0
+
+    // Any other coin, through Trocador.
+    card_y = y
+    Card(session, 60040, x, y, column, topup_card_heights[3])
+    y += 18.0
+    Line(session, 60041, "Pay with another coin", x + 18.0, *y, inner, 21, 8.0)
+    Line(session, 60042, "Bitcoin, Ethereum, Litecoin, USDT and hundreds more. Trocador swaps your coin to Monero and sends it to your Dew address.", x + 18.0, *y, inner, 15, 14.0)
+    link := ""
+    if status.funded && atomic > 0 { link = TrocadorUrl(TextUntilNul(status.funding.address[:]), atomic, dew, topup_link[:]) }
+    pay: [96]u8
+    if Button(session, ButtonProps.{.key = cast(u64)60043, .id = 60043, .label = PayText(dew, pay[:]),
+            .bounds = Rectangle.{x + 18.0, y, inner, 48.0}, .tone = ButtonTone.ButtonToneAccent,
+            .disabled = link == ""}) != 0 && link != "" {
+        unused OpenUri(link)
+    }
+    y += 60.0
+    if !status.ready {
+        Line(session, 60044, "Sign in first, so Trocador sends to your own address.", x + 18.0, *y, inner, 14, 6.0)
+    } else if minimum > 0 && dew < minimum {
+        least: [160]u8
+        Line(session, 60045, MinimumText(minimum, rate, least[:]), x + 18.0, *y, inner, 14, 6.0)
+    }
+    fee: [192]u8
+    Line(session, 60046, FeeText(dew, fee[:]), x + 18.0, *y, inner, 14, 0.0)
+    y += 18.0
+    topup_card_heights[3] = y - card_y
+    y += 24.0
+
+    Line(session, 60050, "Dew works in every Waozi app: unlock practices and storage in Inner Breeze, dress up in Apfelwurm, earn it in Shovey and send it to friends.", x, *y, column, 15, 10.0)
+    if Button(session, ButtonProps.{.key = cast(u64)60051, .id = 60051, .label = "waozi.xyz",
+            .bounds = Rectangle.{x, y, 140.0, 40.0}, .tone = ButtonTone.ButtonToneAccent,
+            .emphasis = ButtonEmphasis.ButtonEmphasisGhost}) != 0 {
+        unused OpenUri("https://waozi.xyz/")
+    }
+    y += 64.0
+    topup_content_height = y - top + 28.0
+    return action
+}
+
+Card :: (session: Session, key: u64, x: float32, y: float32, width: float32, height: float32) {
+    Box(session, BoxProps.{.key = key, .bounds = Rectangle.{x, y, width, height},
+            .fill = ColorFromPacked(cast(u32)DEW_CARD), .radius = 16.0})
+}
+
+// Wrapped text that moves y below itself and the gap after it.
+Line :: (session: Session, key: u64, text: string, x: float32, y: *float32, width: float32, font: s32, gap: float32) {
+    if text == "" { return }
+    props := TextProps.{.key = key, .text = text, .font = font, .wrap = TextWrap.TextWrapAuto,
+        .bounds = Rectangle.{x, y.*, width, 0.0}}
+    height := cast(float32)TextHeight(session, props)
+    props.bounds.height = height
+    Text(session, props)
+    y.* += height + gap
+}
+
+AmountInput :: (session: Session, bounds: Rectangle, input: TextFieldInput) -> bool {
+    snapshot: [16]u8
+    snapshot = topup_typed
+    props := TextFieldProps.{.key = cast(u64)60026, .focus_id = 60026, .bounds = bounds,
+        .label = "Other amount", .placeholder = "Other amount in Dew",
+        .value = TextUntilNul(snapshot[:]), .cursor = topup_field.cursor, .anchor = topup_field.anchor,
+        .scroll_x = topup_field.scroll_x, .focused = topup_field.focused,
+        .max_bytes = 7, .max_codepoints = 7, .numeric = true}
+    if topup_field.focused { props.input = input }
+    result := TextField(session, props)
+    changed := false
+    if result.edit.changed {
+        edit := result.edit
+        length := cast(s32)TextUntilNul(topup_typed[:]).count
+        new_length := length - (edit.end - edit.start) + cast(s32)edit.replacement.count
+        if edit.start >= 0 && edit.end >= edit.start && edit.end <= length && new_length <= 7 {
+            next: [16]u8
+            at: s32 = 0
+            for index: 0..edit.start - 1 { next[at] = topup_typed[index]; at += 1 }
+            for byte: edit.replacement { next[at] = byte; at += 1 }
+            for index: edit.end..length - 1 { next[at] = topup_typed[index]; at += 1 }
+            topup_typed = next
+            changed = true
+        }
+    }
+    if result.clipboard_write { unused SystemClipboardSet(result.clipboard_text) }
+    topup_field = AmountField.{result.cursor, result.anchor, result.scroll_x, result.focused && !result.escaped}
+    return changed
+}
+
+// The QR code of a wallet link, in a white square at most 240 wide.
+DrawQr :: (session: Session, text: string, x: float32, y: float32, width: float32) -> float32 {
+    if text == "" { return 0.0 }
+    if text != TextUntilNul(topup_qr_text[:]) {
+        topup_qr_valid = CopyCString(text, topup_qr_text[:]) && QrEncodeText(text, QrEcc.QrEccMedium, *topup_qr)
+        if topup_qr_valid { QrBuild() }
+    }
+    if !topup_qr_valid { return 0.0 }
+    modules := topup_qr.size + 8
+    limit := cast(s32)width
+    if limit > 240 { limit = 240 }
+    cell := limit / modules
+    if cell < 1 { return 0.0 }
+    side := cell * modules
+    left := cast(s32)(x + (width - cast(float32)side) * 0.5)
+    top := cast(s32)y
+    Box(session, BoxProps.{.key = cast(u64)61000, .radius = 10.0,
+            .bounds = Rectangle.{cast(float32)left, y, cast(float32)side, cast(float32)side}, .fill = Color.{255, 255, 255, 255}})
+    for index: 0..topup_qr_count - 1 {
+        rect := topup_qr_rects[index]
+        Box(session, BoxProps.{.key = cast(u64)(61001 + index),
+                .bounds = Rectangle.{cast(float32)(left + (rect.column + 4) * cell), cast(float32)(top + (rect.row + 4) * cell),
+                    cast(float32)(rect.width * cell), cast(float32)(rect.height * cell)}, .fill = Color.{0, 0, 0, 255}})
+    }
+    return cast(float32)side
+}
+
+// Merges each run of dark modules with the same run in the row above, so a
+// code takes a few hundred rectangles instead of thousands of squares.
+QrBuild :: () {
+    topup_qr_count = 0
+    open: [QR_SIZE_MAX]s32
+    next: [QR_SIZE_MAX]s32
+    for column: 0..QR_SIZE_MAX - 1 { open[column] = -1 }
+    for row: 0..topup_qr.size - 1 {
+        for column: 0..QR_SIZE_MAX - 1 { next[column] = -1 }
+        column: s32 = 0
+        while column < topup_qr.size {
+            if !QrModule(*topup_qr, column, row) { column += 1; continue }
+            start := column
+            while column < topup_qr.size && QrModule(*topup_qr, column, row) { column += 1 }
+            above := open[start]
+            if above >= 0 && topup_qr_rects[above].width == column - start {
+                topup_qr_rects[above].height += 1
+                next[start] = above
+            } else if topup_qr_count < QR_RECTS {
+                topup_qr_rects[topup_qr_count] = QrRect.{start, cast(s32)row, column - start, 1}
+                next[start] = topup_qr_count
+                topup_qr_count += 1
+            } else {
+                topup_qr_valid = false
+                return
+            }
+        }
+        open = next
+    }
+}
+
+Joined :: (first: string, second: string, output: []u8) -> string {
+    at: s64 = 0
+    if !Append(output, *at, first) || !Append(output, *at, second) { return first }
+    return TextUntilNul(output)
+}
+
+// "0.1234 XMR · about $72.90" for a balance in token units.
+WorthText :: (units: s64, rate: DewRate, usd_cents: s64, output: []u8) -> string {
+    reduced := ReducedRate(rate)
+    if reduced.units <= 0 || units < 0 || units > 9223372036854775807 / reduced.atomic { return "" }
+    atomic := units * reduced.atomic / reduced.units
+    xmr: [48]u8
+    dollars: [48]u8
+    at: s64 = 0
+    if !Append(output, *at, XmrText(atomic, xmr[:])) { return "" }
+    worth := UsdText(UsdCents(atomic, usd_cents), dollars[:])
+    if worth != "" && (!Append(output, *at, " · ") || !Append(output, *at, worth)) { return "" }
+    return TextUntilNul(output)
+}
+
+// "500 Dew = 0.05 XMR · about $29.54".
+AmountText :: (dew: s64, atomic: s64, usd_cents: s64, output: []u8) -> string {
+    if dew <= 0 { return "Choose an amount, or type any whole number of Dew." }
+    if atomic <= 0 { return "Loading the rate…" }
+    digits: [24]u8
+    xmr: [48]u8
+    dollars: [48]u8
+    at: s64 = 0
+    if !Append(output, *at, FormatInteger(dew, digits[:])) || !Append(output, *at, " Dew = ") ||
+    !Append(output, *at, XmrText(atomic, xmr[:])) { return "" }
+    worth := UsdText(UsdCents(atomic, usd_cents), dollars[:])
+    if worth != "" && (!Append(output, *at, " · ") || !Append(output, *at, worth)) { return "" }
+    return TextUntilNul(output)
+}
+
+PayText :: (dew: s64, output: []u8) -> string {
+    if dew <= 0 { return "Pay with another coin" }
+    digits: [24]u8
+    at: s64 = 0
+    if !Append(output, *at, "Pay ") || !Append(output, *at, FormatInteger(dew, digits[:])) ||
+    !Append(output, *at, " Dew with another coin") { return "Pay with another coin" }
+    return TextUntilNul(output)
+}
+
+// "Other coins need at least 100 Dew (0.01 XMR)."
+MinimumText :: (minimum: s64, rate: DewRate, output: []u8) -> string {
+    digits: [24]u8
+    xmr: [48]u8
+    at: s64 = 0
+    if !Append(output, *at, "Other coins need at least ") || !Append(output, *at, FormatInteger(minimum, digits[:])) ||
+    !Append(output, *at, " Dew (") || !Append(output, *at, XmrText(TROCADOR_MINIMUM_ATOMIC, xmr[:])) ||
+    !Append(output, *at, "). Monero takes any amount.") { return "" }
+    return TextUntilNul(output)
+}
+
+FeeText :: (dew: s64, output: []u8) -> string {
+    if dew <= 0 { return "Opens trocador.app in a new tab." }
+    digits: [24]u8
+    at: s64 = 0
+    if !Append(output, *at, "Opens trocador.app in a new tab. You pay the swap fee there and receive exactly ") ||
+    !Append(output, *at, FormatInteger(dew, digits[:])) || !Append(output, *at, " Dew.") { return "" }
+    return TextUntilNul(output)
+}
+
+// Monero adds a block about every two minutes.
+ConfirmationText :: (confirmations: s64, output: []u8) -> string {
+    digits: [24]u8
+    minutes: [24]u8
+    at: s64 = 0
+    if !Append(output, *at, "Your Dew arrives after ") || !Append(output, *at, FormatInteger(confirmations, digits[:])) ||
+    !Append(output, *at, " confirmations, about ") || !Append(output, *at, FormatInteger(confirmations * 2, minutes[:])) ||
+    !Append(output, *at, " minutes after you send.") { return "" }
+    return TextUntilNul(output)
+}

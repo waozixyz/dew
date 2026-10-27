@@ -1,0 +1,161 @@
+// The arithmetic behind the top-up page: Dew, Monero and dollars, and the
+// links that pay for Dew. The node sets the rate and credits every payment
+// that reaches the account's address; nothing here grants Dew.
+#import "std/c_string"
+#import "std/text_buffer"
+#import "std/json_scan"
+#import "std/number_text"
+#import "entity/dew_model"
+
+PICONERO :: 1000000000000
+// Trocador swaps no less than 0.01 XMR.
+TROCADOR_MINIMUM_ATOMIC :: 10000000000
+// Seven digits keep every amount far from overflowing.
+DEW_MAXIMUM :: 9999999
+S64_MAXIMUM :: 9223372036854775807
+
+// atomic piconero buy units token units; DewUnits token units are one Dew.
+DewRate :: struct { atomic: s64; units: s64 }
+
+// The node's public rate: the Dew ratio and a display-only dollar price.
+DewRates :: struct {
+    rate: DewRate
+    usd_cents: s64
+}
+
+Divisor :: (first: s64, second: s64) -> s64 {
+    a := first
+    b := second
+    while b != 0 {
+        rest := a % b
+        a = b
+        b = rest
+    }
+    return a
+}
+
+// The rate reduced, so products stay small; units 0 when it is unusable.
+ReducedRate :: (rate: DewRate) -> DewRate {
+    if rate.atomic <= 0 || rate.units <= 0 { return DewRate.{} }
+    divisor := Divisor(rate.atomic, rate.units)
+    return DewRate.{rate.atomic / divisor, rate.units / divisor}
+}
+
+// The piconero that buy whole Dew, rounded up so the Dew is never short;
+// -1 for an amount or rate that cannot be priced.
+DewAtomic :: (dew: s64, rate: DewRate) -> s64 {
+    reduced := ReducedRate(rate)
+    if dew <= 0 || dew > DEW_MAXIMUM || reduced.units <= 0 ||
+    reduced.atomic > S64_MAXIMUM / DewUnits { return -1 }
+    per_dew := DewUnits * reduced.atomic
+    if dew > (S64_MAXIMUM - reduced.units) / per_dew { return -1 }
+    return (dew * per_dew + reduced.units - 1) / reduced.units
+}
+
+// The fewest whole Dew that cost at least atomic piconero; -1 when unknown.
+DewAtLeast :: (atomic: s64, rate: DewRate) -> s64 {
+    reduced := ReducedRate(rate)
+    if atomic <= 0 || reduced.units <= 0 || reduced.atomic > S64_MAXIMUM / DewUnits ||
+    reduced.units > S64_MAXIMUM / atomic { return -1 }
+    per_dew := DewUnits * reduced.atomic
+    return (atomic * reduced.units + per_dew - 1) / per_dew
+}
+
+// The dollar cents atomic piconero are worth at usd_cents per XMR.
+UsdCents :: (atomic: s64, usd_cents: s64) -> s64 {
+    if atomic <= 0 || usd_cents <= 0 || usd_cents > 100000000 { return 0 }
+    return atomic / PICONERO * usd_cents + atomic % PICONERO * usd_cents / PICONERO
+}
+
+// "0.05 XMR", the shortest exact decimal.
+XmrText :: (atomic: s64, output: []u8) -> string {
+    if !DewFormat(atomic, PICONERO, output, "XMR") { return "" }
+    return TextUntilNul(output)
+}
+
+// "about $29.54", or "" without a known price.
+UsdText :: (cents: s64, output: []u8) -> string {
+    if cents <= 0 || output.count < 32 { return "" }
+    digits: [24]u8
+    at: s64 = 0
+    for byte: "about $" { output[at] = byte; at += 1 }
+    for byte: FormatInteger(cents / 100, digits[:]) { output[at] = byte; at += 1 }
+    output[at] = cast(u8)46
+    output[at + 1] = cast(u8)(48 + cents % 100 / 10)
+    output[at + 2] = cast(u8)(48 + cents % 10)
+    output[at + 3] = cast(u8)0
+    return TextUntilNul(output)
+}
+
+// Whole Dew typed into the amount field; 0 when it holds none or too many.
+DewTyped :: (text: string) -> s64 {
+    if text.count == 0 || text.count > 7 { return 0 }
+    value: s64 = 0
+    for byte: text {
+        if byte < cast(u8)48 || byte > cast(u8)57 { return 0 }
+        value = value * 10 + cast(s64)(byte - cast(u8)48)
+    }
+    return value
+}
+
+// GET /api/v1/rates: {"xmr_usd_cents":…,"xmr_atomic_units":…,"token_units":…}.
+// A stale price reads as 0, which hides the dollars.
+DewParseRates :: (json: string, rates: *DewRates) -> bool {
+    parsed: DewRates
+    if json.count == 0 || Space(json, ValueEnd(json, 0, 0)) != cast(s32)json.count ||
+    !DewInteger(json, FieldAt(json, 0, "xmr_usd_cents"), *parsed.usd_cents) ||
+    !DewInteger(json, FieldAt(json, 0, "xmr_atomic_units"), *parsed.rate.atomic) ||
+    !DewInteger(json, FieldAt(json, 0, "token_units"), *parsed.rate.units) ||
+    parsed.rate.atomic <= 0 || parsed.rate.units <= 0 { return false }
+    rates.* = parsed
+    return true
+}
+
+AddressSafe :: (address: string) -> bool {
+    if address.count < 95 || address.count > 106 { return false }
+    for byte: address {
+        digit := byte >= cast(u8)48 && byte <= cast(u8)57
+        letter := (byte >= cast(u8)65 && byte <= cast(u8)90) || (byte >= cast(u8)97 && byte <= cast(u8)122)
+        if !digit && !letter { return false }
+    }
+    return true
+}
+
+Append :: (output: []u8, at: *s64, text: string) -> bool {
+    if at.* + text.count >= output.count { return false }
+    for byte: text { output[at.*] = byte; at.* += 1 }
+    output[at.*] = cast(u8)0
+    return true
+}
+
+// The wallet link a Monero app opens with the address and amount filled in.
+MoneroUri :: (address: string, atomic: s64, output: []u8) -> string {
+    amount: [48]u8
+    at: s64 = 0
+    if !AddressSafe(address) || !Append(output, *at, "monero:") || !Append(output, *at, address) { return "" }
+    if atomic > 0 {
+        if !DewFormat(atomic, PICONERO, amount[:]) || !Append(output, *at, "?tx_amount=") ||
+        !Append(output, *at, TextUntilNul(amount[:])) || !Append(output, *at, "&tx_description=Dew") { return "" }
+    }
+    return TextUntilNul(output)
+}
+
+// Trocador AnonPay in payment mode: the payer picks any coin, Trocador swaps
+// it and sends exactly atomic piconero to the account's own address, where
+// the node credits the Dew as for any Monero payment. Monero itself is paid
+// on the page, so AnonPay offers only the other coins.
+TrocadorUrl :: (address: string, atomic: s64, dew: s64, output: []u8) -> string {
+    amount: [48]u8
+    digits: [24]u8
+    at: s64 = 0
+    if !AddressSafe(address) || atomic < TROCADOR_MINIMUM_ATOMIC || dew <= 0 ||
+    !DewFormat(atomic, PICONERO, amount[:]) { return "" }
+    if !Append(output, *at, "https://trocador.app/anonpay/?ticker_to=xmr&network_to=Mainnet&address=") ||
+    !Append(output, *at, address) || !Append(output, *at, "&amount=") ||
+    !Append(output, *at, TextUntilNul(amount[:])) || !Append(output, *at, "&name=Dew&description=") ||
+    !Append(output, *at, FormatInteger(dew, digits[:])) ||
+    !Append(output, *at, "%20Dew&simple_mode=True&remove_direct_pay=True&buttonbgcolor=2f9fc4&textcolor=ffffff") {
+        return ""
+    }
+    return TextUntilNul(output)
+}

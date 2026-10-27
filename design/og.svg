@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <radialGradient id="glow" cx="0.78" cy="0.3" r="0.7">
+      <stop offset="0" stop-color="#1d4e61"/>
+      <stop offset="1" stop-color="#0e1a20"/>
+    </radialGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#glow)"/>
+  <g transform="translate(860 120) scale(5.6)">
+    <path d="M32 6c-6 10-19 23-19 33a19 19 0 0 0 38 0c0-10-13-23-19-33Z" fill="#2f9fc4"/>
+    <path d="M22 40c0 6 4.5 10 10 10" fill="none" stroke="#bfe8f5" stroke-width="3" stroke-linecap="round"/>
+  </g>
+  <text x="90" y="290" font-family="Liberation Sans, DejaVu Sans, sans-serif" font-size="150" font-weight="700" fill="#e8f3f7">Dew</text>
+  <text x="94" y="372" font-family="Liberation Sans, DejaVu Sans, sans-serif" font-size="44" fill="#bcd6df">One currency for every Waozi app</text>
+  <text x="94" y="440" font-family="Liberation Sans, DejaVu Sans, sans-serif" font-size="34" fill="#7fb3c4">Top up with Monero or almost any coin</text>
+  <text x="94" y="560" font-family="Liberation Sans, DejaVu Sans, sans-serif" font-size="30" fill="#5c8a9a">dew.waozi.xyz</text>
+</svg>

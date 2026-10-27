@@ -1,0 +1,106 @@
+// dew.waozi.xyz in the browser: the top-up page, and the shared Profile for
+// signing in. Entity's provider is the only code that touches account keys;
+// they stay in this page's persistent browser storage.
+using Canvas :: #import "kryon/Canvas";
+#import "kryon/bundle_storage_web"
+#import "kryon/app_files"
+#import "kryon/page_core"
+#import "kryon/session"
+#import "kryon/geometry"
+#import "kryon/tree"
+#import "kryon/tree_input"
+#import "kryon/Frame"
+#import "kryon/ScrollDevice"
+#import "kryon/key_input"
+#import "kryon/text_input_props"
+#import "kryon/text_props"
+#import "kryon/text_widget"
+#import "kryon/button_props"
+#import "kryon/button_widget"
+#import "kryon/box_props"
+#import "kryon/box_widget"
+#import "kryon/drawing_props"
+#import "kryon/widget_palette"
+#import "kryon/TestDriver"
+#import "std/file"
+#import "std/web"
+#import "entity/native_host"
+#import "topup"
+
+#program_export
+main :: () -> s32 {
+    if !OpenCanvas() { return 1 }
+    defer CloseCanvas()
+    if !BundleStorageOpen() { return 1 }
+    while !BundleStorageReady() && !BundleStorageFailed() { WebSleep(10) }
+    if !BundleStorageReady() { return 1 }
+    profile_bytes, found := ReadEntireFile("/entity.zx")
+    defer { AppFileFree(profile_bytes) }
+    if !found || !EntityHostOpen(profile_bytes, "/kryon-apps/profile", "dew", true) { return 1 }
+    defer { unused EntityHostClose(); unused BundleStorageSync(false) }
+    session := SessionOpen()
+    if !SessionValid(session) { return 1 }
+    defer { unused SessionClose(session) }
+    palette := DewPalette()
+    unused WidgetPaletteUse(session, palette)
+    profile := false
+    saved := PageNow()
+    WebSet(WebGetObject(WebGlobal, WebName("Module")), WebName("profileReady"), WebBool(true))
+    while PollCanvas() {
+        scope := WebScope()
+        WebSet(WebGetObject(WebGlobal, WebName("Module")), WebName("profileVisible"), WebBool(profile))
+        BeginCanvasFrame()
+        viewport := CanvasViewport()
+        pointer := PollPointer()
+        key := CanvasPressedKey()
+        modifiers := CanvasModifiers()
+        wheel := CanvasWheelMove()
+        point := CanvasTypedCodepoint()
+        while point != 0 { unused TypedCodepointSend(session, point); point = CanvasTypedCodepoint() }
+        typed: [1024]u8
+        text := TypedTextTake(session, typed[:])
+        EntityHostPump()
+        TopupPump(PageNow())
+        TreePointerUpdate(session, pointer)
+        TreeSecondaryPointerUpdate(session, PollSecondaryPointer())
+        PointerWheelSend(session, pointer.x, pointer.y, wheel)
+        KeyboardModifiersSend(session, modifiers)
+        if key != 0 { unused KeyboardSend(session, key) }
+        BeginScrollFrame(session, Vector2.{pointer.x, pointer.y}, pointer.pressed,
+            pointer.down, pointer.released, wheel, PageNow() / 1000.0)
+        if BeginFrame(session, cast(u64)1, viewport) != FrameStatus.FrameOk { return 1 }
+        unused WidgetPaletteUse(session, palette)
+        input := TextFieldInputFor(key, modifiers, text)
+        if profile {
+            // The Profile sits under the page's own title bar and Back.
+            Box(session, BoxProps.{.key = cast(u64)49003, .bounds = Rectangle.{viewport.x, viewport.y, viewport.width, 56.0},
+                    .fill = ColorFromPacked(palette.background)})
+            bounds := Rectangle.{viewport.x, viewport.y + 56.0, viewport.width, viewport.height - 56.0}
+            if !EntityHostFrame(session, bounds, key, modifiers, input, true) { return 1 }
+            Text(session, TextProps.{.key = cast(u64)49002, .text = "Profile", .font = 20,
+                    .bounds = Rectangle.{100.0, 12.0, viewport.width - 200.0, 36.0}})
+            if Button(session, ButtonProps.{.key = cast(u64)49001, .id = 49001, .label = "Back",
+                    .bounds = Rectangle.{8.0, 6.0, 76.0, 44.0}}) != 0 || key == 256 {
+                if !EntityHostBack() && EntityHostSave() { profile = false }
+            }
+        } else {
+            action := TopupFrame(session, viewport, input, PageNow())
+            if action != TOPUP_NONE {
+                EntityHostReload()
+                if action == TOPUP_SIGN_IN { unused EntityHostAccount() }
+                profile = true
+            }
+        }
+        if EndFrame(session) != FrameStatus.FrameOk { return 1 }
+        TestDriverFrame(session)
+        CanvasCursor(session)
+        unused EndCanvasFrame()
+        // Account changes reach the browser's storage about once a second.
+        if PageNow() - saved >= 1000.0 {
+            unused BundleStorageSync(false)
+            saved = PageNow()
+        }
+        WebEnd(scope)
+    }
+    return 0
+}

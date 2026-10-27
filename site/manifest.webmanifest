@@ -1,0 +1,13 @@
+{
+  "name": "Dew",
+  "short_name": "Dew",
+  "description": "Top up Dew, the one currency for every Waozi app.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0e1a20",
+  "theme_color": "#0e1a20",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

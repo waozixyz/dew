@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <title>Dew</title>
+  <meta name="description" content="Dew is the one currency for every Waozi app. Sign in with your Waozi profile and top up with Monero or almost any other coin.">
+  <meta name="theme-color" content="#0e1a20">
+  <link rel="canonical" href="https://dew.waozi.xyz/">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://dew.waozi.xyz/">
+  <meta property="og:title" content="Dew">
+  <meta property="og:description" content="One currency for every Waozi app. Top up with Monero or almost any coin.">
+  <meta property="og:image" content="https://dew.waozi.xyz/og.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <style>
+    html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; overscroll-behavior: none; background: #0e1a20; color: #e8f3f7; }
+    canvas { display: block; width: 100%; height: 100%; outline: none; touch-action: none; }
+    #loading { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px; background: #0e1a20; font: 600 16px/1.4 system-ui, sans-serif; transition: opacity .3s ease; }
+    #loading.done { opacity: 0; pointer-events: none; }
+    #loading img { width: 64px; height: 64px; }
+    #loading .track { width: min(280px, 70vw); height: 6px; border-radius: 3px; background: #ffffff26; overflow: hidden; }
+    #loading .bar { width: 0; height: 100%; background: #2f9fc4; transition: width .2s ease; }
+    #loading .failed { display: none; color: #ffb4a8; text-align: center; padding: 0 24px; }
+    #loading.error .failed { display: block; }
+    #loading.error .track { display: none; }
+  </style>
+</head>
+<body>
+  <canvas id="canvas" tabindex="0"></canvas>
+  <div id="loading" role="status" aria-live="polite">
+    <img src="icon.svg" alt="">
+    <div class="track"><div class="bar"></div></div>
+    <p class="failed">Dew could not start. Reload the page to try again.</p>
+    <noscript><p>Dew needs JavaScript and WebAssembly to run.</p></noscript>
+  </div>
+  <script>
+    (function () {
+      var loading = document.getElementById('loading');
+      var bar = loading.querySelector('.bar');
+      function failed() { loading.classList.add('error'); }
+      // The page reports ready once it is about to draw.
+      function watch() {
+        if (window.Module && Module.profileReady) { loading.classList.add('done'); return; }
+        requestAnimationFrame(watch);
+      }
+      window.Module = {
+        canvas: document.getElementById('canvas'),
+        setStatus: function (text) {
+          var match = /\((\d+(?:\.\d+)?)\/(\d+)\)/.exec(text || '');
+          if (match) bar.style.width = Math.min(100, 100 * match[1] / match[2]) + '%';
+        },
+        onAbort: failed,
+        onExit: function (code) { if (code !== 0) failed(); }
+      };
+      var script = document.createElement('script');
+      script.src = 'runtime.js';
+      script.onerror = failed;
+      document.body.appendChild(script);
+      watch();
+    })();
+  </script>
+</body>
+</html>

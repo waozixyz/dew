@@ -1,0 +1,108 @@
+name: Site release
+
+# Every push to master builds and tests dew.waozi.xyz. A new numeric version
+# in CHANGELOG.md is published as a GitHub release with the site archive;
+# the waozi.xyz repository deploys the latest release to dew.waozi.xyz.
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: dew-release
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: waozixyz/dew
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          path: waozixyz/dew
+          persist-credentials: false
+      - name: Read the locked toolchain and release version
+        id: version
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import json
+          from pathlib import Path
+          print('compiler=' + json.loads(Path('ziran.lock').read_text())['toolchain']['commit'])
+          print('version=' + json.loads(Path('version.json').read_text())['version'])
+          PY
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: ziranlang/ziran
+          ref: ${{ steps.version.outputs.compiler }}
+          path: ziranlang/ziran
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install build dependencies
+        working-directory: .
+        run: sh ziranlang/ziran/scripts/ci_packages.sh build-essential cmake pkg-config
+      - uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: '6.0.6'
+          actions-cache-folder: emsdk-cache
+      - name: Build the locked compiler and fetch packages
+        run: |
+          make -j2 -C "$GITHUB_WORKSPACE/ziranlang/ziran"
+          echo "$GITHUB_WORKSPACE/ziranlang/ziran/build/bin" >> "$GITHUB_PATH"
+          "$GITHUB_WORKSPACE/ziranlang/ziran/build/bin/ziran" fetch --locked
+      - name: Test and build the site
+        run: |
+          make test ZIRAN="$GITHUB_WORKSPACE/ziranlang/ziran/build/bin/ziran"
+          make web ZIRAN="$GITHUB_WORKSPACE/ziranlang/ziran/build/bin/ziran"
+      - name: Open the site in a private browser
+        run: |
+          mkdir -p build/t
+          export CHROMIUM="$(command -v google-chrome || command -v chromium)"
+          TMPDIR="$PWD/build/t" make web-test
+      - name: Package the site and its release notes
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          python3 - <<'PY'
+          import json, os, re, zipfile
+          from pathlib import Path
+          version = os.environ['VERSION']
+          meta = json.loads(Path('build/web/version.json').read_text())
+          assert meta == {'version': version, 'revision': os.environ['GITHUB_SHA']}, meta
+          Path('build/downloads').mkdir(parents=True, exist_ok=True)
+          with zipfile.ZipFile(f'build/downloads/dew-web-v{version}.zip', 'w', zipfile.ZIP_DEFLATED) as archive:
+              for path in sorted(Path('build/web').rglob('*')):
+                  if path.is_file():
+                      archive.write(path, path.relative_to('build/web').as_posix())
+          text = Path('CHANGELOG.md').read_text()
+          section = re.search(r'^## \[' + re.escape(version) + r'\] - .*?\n(.*?)(?=^## |\Z)', text, re.M | re.S)
+          assert section, 'CHANGELOG.md has no entry for ' + version
+          Path('build/release-notes.md').write_text(section[1].strip() + '\n')
+          PY
+      - name: Publish a new version
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -euo pipefail
+          tag="v$VERSION"
+          state=$(gh release view "$tag" --json isDraft --jq .isDraft 2>/dev/null || echo missing)
+          if [ "$state" = false ]; then
+            echo "Dew $VERSION is already published; this build was tested only."
+            exit 0
+          fi
+          if [ "$state" = missing ]; then
+            gh release create "$tag" --draft --target "$GITHUB_SHA" --title "Dew $VERSION" --notes-file build/release-notes.md
+          fi
+          gh release upload "$tag" "build/downloads/dew-web-v$VERSION.zip" --clobber
+          gh release edit "$tag" --draft=false --latest

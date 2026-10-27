@@ -1,0 +1,19 @@
+[package]
+name = "Dew"
+module_roots = ["src", "tests"]
+
+[toolchain]
+git = "https://github.com/ziranlang/ziran.git"
+ref = "master"
+
+[dependencies.kryon]
+git = "https://github.com/kryonlabs/kryon.git"
+ref = "master"
+
+[dependencies.entity]
+git = "https://github.com/waozixyz/entity.git"
+ref = "master"
+
+[dependencies.qrcode]
+git = "https://github.com/ziranlang/qrcode.git"
+ref = "master"
