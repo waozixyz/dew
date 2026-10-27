@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.2.1] - 2026-10-27
+
+- The Profile opens even when a saved account key on this browser cannot be read; it says so, keeps the key aside and lets you sign in again.
+
 ## [0.2.0] - 2026-10-27
 
 - See incoming Monero payments with their confirmations until the Dew is added.
