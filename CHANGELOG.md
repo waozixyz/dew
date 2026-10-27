@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.2.3] - 2026-10-27
+
+- Payments now show under Activity at the bottom of the page, with the day each one arrived and what became of it. The section stays hidden until there is a payment.
+
 ## [0.2.2] - 2026-10-27
 
 - Sign in once for every waozi.xyz site: a profile signed in on Arcade, Apfelwurm or here is used by the others in the same browser, and logging out on one logs it out of the shared sign-in.

@@ -80,6 +80,8 @@ main :: () -> s32 {
     if DewParseDeposits(list, deposits[:]) != 2 { return 60 }
     if deposits[0].atomic != 50000000000 || deposits[0].confirmations != 3 || TextUntilNul(deposits[0].status[:]) != "confirming" || deposits[0].units != 0 { return 61 }
     if deposits[1].units != 100000000 || TextUntilNul(deposits[1].status[:]) != "credited" { return 62 }
+    if TextUntilNul(deposits[0].day[:]) != "2026-10-27" || TextUntilNul(deposits[1].day[:]) != "2026-10-26" { return 64 }
+    if !DayValid("2026-10-27T17:00:00Z") || DayValid("2026/10/27") || DayValid("") { return 65 }
     if DewParseDeposits("{\"deposits\":[]}", deposits[:]) != 0 || DewParseDeposits("{}", deposits[:]) != -1 || DewParseDeposits("", deposits[:]) != -1 { return 63 }
     return 0
 }

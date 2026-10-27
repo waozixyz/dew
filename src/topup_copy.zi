@@ -31,8 +31,7 @@ TopupCopy :: struct {
     copy_address: string
     copied: string
     confirmations: string
-    incoming: string
-    no_deposits: string
+    activity: string
     deposit_confirming: string
     deposit_confirmed: string
     deposit_credited: string
@@ -80,8 +79,7 @@ TopupEnglish :: () -> TopupCopy {
         .copy_address = "Copy address",
         .copied = "Copied",
         .confirmations = "Dew arrives after %1 confirmations, about %2 minutes after you send.",
-        .incoming = "Incoming payments",
-        .no_deposits = "No payment seen yet. It shows up here as soon as it reaches the network.",
+        .activity = "Activity",
         .deposit_confirming = "%1 · %2 of %3 confirmations",
         .deposit_confirmed = "%1 · confirmed, adding Dew…",
         .deposit_credited = "%1 · %2 Dew added",
@@ -129,8 +127,7 @@ TopupGerman :: () -> TopupCopy {
         .copy_address = "Adresse kopieren",
         .copied = "Kopiert",
         .confirmations = "Dew kommt nach %1 Bestätigungen an, etwa %2 Minuten nach dem Senden.",
-        .incoming = "Eingehende Zahlungen",
-        .no_deposits = "Noch keine Zahlung gesehen. Sie erscheint hier, sobald sie im Netzwerk ist.",
+        .activity = "Aktivität",
         .deposit_confirming = "%1 · %2 von %3 Bestätigungen",
         .deposit_confirmed = "%1 · bestätigt, Dew wird gutgeschrieben …",
         .deposit_credited = "%1 · %2 Dew gutgeschrieben",
@@ -178,8 +175,7 @@ TopupSpanish :: () -> TopupCopy {
         .copy_address = "Copiar dirección",
         .copied = "Copiada",
         .confirmations = "El Dew llega tras %1 confirmaciones, unos %2 minutos después del envío.",
-        .incoming = "Pagos entrantes",
-        .no_deposits = "Aún no se ha visto ningún pago. Aparecerá aquí en cuanto llegue a la red.",
+        .activity = "Actividad",
         .deposit_confirming = "%1 · %2 de %3 confirmaciones",
         .deposit_confirmed = "%1 · confirmado, añadiendo Dew…",
         .deposit_credited = "%1 · %2 Dew añadidos",

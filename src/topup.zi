@@ -346,23 +346,6 @@ TopupFrame :: (session: Session, viewport: Rectangle, input: TextFieldInput, now
     topup_card_heights[0] = y - card_y
     y += 16.0
 
-    // Payments on their way to the signed-in account.
-    if status.ready && status.funded && !guest && topup_deposit_count >= 0 {
-        card_y = y
-        Card(session, 60060, x, y, column, topup_card_heights[1])
-        y += 18.0
-        Line(session, 60061, copy.incoming, x + 18.0, *y, inner, 21, 10.0)
-        if topup_deposit_count == 0 { Line(session, 60062, copy.no_deposits, x + 18.0, *y, inner, 15, 0.0) }
-        for index: 0..topup_deposit_count - 1 {
-            line: [256]u8
-            Line(session, cast(u64)(60063 + index), DepositText(topup_deposits[index], funding.confirmations, line[:]),
-                x + 18.0, *y, inner, 15, 6.0)
-        }
-        y += 18.0
-        topup_card_heights[1] = y - card_y
-        y += 16.0
-    }
-
     // How much Dew.
     card_y = y
     Card(session, 60020, x, y, column, topup_card_heights[2])
@@ -453,6 +436,23 @@ TopupFrame :: (session: Session, viewport: Rectangle, input: TextFieldInput, now
     y += 18.0
     topup_card_heights[4] = y - card_y
     y += 24.0
+
+    // Activity: the account's Monero payments, newest first, with the day each
+    // arrived and what became of it. Nothing shows until there is one.
+    if status.ready && status.funded && !guest && topup_deposit_count > 0 {
+        card_y = y
+        Card(session, 60060, x, y, column, topup_card_heights[1])
+        y += 18.0
+        Line(session, 60061, copy.activity, x + 18.0, *y, inner, 21, 10.0)
+        for index: 0..topup_deposit_count - 1 {
+            line: [256]u8
+            Line(session, cast(u64)(60063 + index), DepositText(topup_deposits[index], funding.confirmations, line[:]),
+                x + 18.0, *y, inner, 15, 6.0)
+        }
+        y += 18.0
+        topup_card_heights[1] = y - card_y
+        y += 16.0
+    }
 
     Line(session, 60050, copy.footer, x, *y, column, 15, 10.0)
     if Button(session, ButtonProps.{.key = cast(u64)60051, .id = 60051, .label = "waozi.xyz",
@@ -602,7 +602,12 @@ DepositText :: (deposit: DewDeposit, required: s64, output: []u8) -> string {
     xmr: [48]u8
     first: [24]u8
     second: [24]u8
+    // "2026-10-27 · 0.05 XMR" when the node gave the day.
+    dated: [80]u8
+    at: s64 = 0
     amount := XmrText(deposit.atomic, xmr[:])
+    if deposit.day[0] != cast(u8)0 && Append(dated[:], *at, TextUntilNul(deposit.day[:])) && Append(dated[:], *at, " · ") &&
+    Append(dated[:], *at, amount) { amount = TextUntilNul(dated[:]) }
     state := TextUntilNul(deposit.status[:])
     if state == "credited" {
         dew: [48]u8

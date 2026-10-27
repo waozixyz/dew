@@ -240,6 +240,18 @@ DewDeposit :: struct {
     units: s64
     confirmations: s64
     status: [24]u8
+    // The UTC day it was credited, or first seen while still on its way.
+    day: [11]u8
+}
+
+// "2026-10-27" at the start of an RFC 3339 time.
+DayValid :: (stamp: string) -> bool {
+    if stamp.count < 10 || stamp[4] != cast(u8)45 || stamp[7] != cast(u8)45 { return false }
+    for index: 0..9 {
+        if index == 4 || index == 7 { continue }
+        if stamp[index] < cast(u8)48 || stamp[index] > cast(u8)57 { return false }
+    }
+    return true
 }
 
 // The newest deposits from {"deposits":[…]}, at most output.count; -1 when
@@ -257,6 +269,14 @@ DewParseDeposits :: (json: string, output: []DewDeposit) -> s32 {
         !DewInteger(json, FieldAt(json, at, "confirmations"), *deposit.confirmations) ||
         ReadStringText(json, FieldAt(json, at, "status"), deposit.status[:]) <= 0 { continue }
         if !DewInteger(json, FieldAt(json, at, "token_units"), *deposit.units) { deposit.units = 0 }
+        stamp: [40]u8
+        if ReadStringText(json, FieldAt(json, at, "credited_at"), stamp[:]) < 10 {
+            stamp = .{}
+            unused ReadStringText(json, FieldAt(json, at, "first_seen_at"), stamp[:])
+        }
+        if DayValid(TextUntilNul(stamp[:])) {
+            for index: 0..9 { deposit.day[index] = stamp[index] }
+        }
         output[used] = deposit
         used += 1
     }
