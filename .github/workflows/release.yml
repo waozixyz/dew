@@ -28,21 +28,21 @@ jobs:
         with:
           path: waozixyz/dew
           persist-credentials: false
-      - name: Read the locked toolchain and release version
+      - name: Read the release version
         id: version
         run: |
           python3 - <<'PY' >> "$GITHUB_OUTPUT"
           import json
           from pathlib import Path
-          print('compiler=' + json.loads(Path('ziran.lock').read_text())['toolchain']['commit'])
           print('version=' + json.loads(Path('version.json').read_text())['version'])
           PY
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      # The locked compiler comes prebuilt, and the package checkouts cached.
+      - name: Set up the locked Ziran and fetch packages
+        uses: ziranlang/ziran/.github/actions/setup@79ca2f95c0e90e6c339e2921a198b4f946eb50bb
         with:
-          repository: ziranlang/ziran
-          ref: ${{ steps.version.outputs.compiler }}
+          project: waozixyz/dew
           path: ziranlang/ziran
-          persist-credentials: false
+          fetch: true
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -53,11 +53,6 @@ jobs:
         with:
           version: '6.0.6'
           actions-cache-folder: emsdk-cache
-      - name: Build the locked compiler and fetch packages
-        run: |
-          make -j2 -C "$GITHUB_WORKSPACE/ziranlang/ziran"
-          echo "$GITHUB_WORKSPACE/ziranlang/ziran/build/bin" >> "$GITHUB_PATH"
-          "$GITHUB_WORKSPACE/ziranlang/ziran/build/bin/ziran" fetch --locked
       - name: Test and build the site
         run: |
           make test ZIRAN="$GITHUB_WORKSPACE/ziranlang/ziran/build/bin/ziran"
