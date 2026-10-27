@@ -1,8 +1,10 @@
 // dew.waozi.xyz: one focused page for buying Dew, the currency every Waozi
 // app shares. The account comes from Entity's shared Profile, whose provider
-// keeps the keys; this page only reads the balance and the account's own
-// Monero address from the node and draws them.
+// keeps the keys; this page only reads the balance, deposits and the
+// account's own Monero address from the node and draws them. A link may name
+// another account (?account=ID), whose public address the page then shows.
 #import "topup_model"
+#import "topup_copy"
 #import "entity/native_host"
 #import "entity/dew_model"
 #import "qrcode/qrcode"
@@ -55,6 +57,7 @@ DewPalette :: () -> WidgetPalette {
 
 AmountField :: struct { cursor: s32; anchor: s32; scroll_x: s32; focused: bool }
 
+topup_copy: TopupCopy;
 DEW_PRESETS: [4]s64 = .[100, 500, 1000, 5000];
 // The chosen preset, or -1 while the typed amount counts.
 topup_preset: s32 = 1;
@@ -62,10 +65,16 @@ topup_typed: [16]u8;
 topup_field: AmountField;
 topup_scroll: s32;
 topup_content_height: float32 = 1600.0;
-topup_card_heights: [4]float32 = .[180.0, 200.0, 420.0, 260.0];
+topup_card_heights: [5]float32 = .[180.0, 160.0, 200.0, 420.0, 260.0];
 topup_copied_until: float64;
 topup_refreshed_at: float64 = -100000.0;
 topup_address_at: float64 = -100000.0;
+topup_deposits_at: float64 = -100000.0;
+// After a request the node did not answer, the next waits longer each time
+// (10 s doubling to 5 min), so a struggling node is not flooded.
+topup_attempt_pending: bool;
+topup_failures: s32;
+topup_retry_at: float64;
 
 // The node's public rate and dollar price, fetched every ten minutes.
 topup_rates: DewRates;
@@ -74,6 +83,27 @@ topup_rates_running: bool;
 topup_rates_at: float64 = -1000000.0;
 topup_rates_transfer: HttpTransfer;
 topup_rates_answer: [4096]u8;
+
+// The account a link names: 0 none, 1 loading, 2 known, 3 not found.
+TOPUP_GUEST_NONE :: 0
+TOPUP_GUEST_LOADING :: 1
+TOPUP_GUEST_KNOWN :: 2
+TOPUP_GUEST_INVALID :: 3
+topup_reference: [80]u8;
+topup_guest_state: s32;
+topup_guest_running: bool;
+topup_guest_at: float64 = -1000000.0;
+topup_guest_transfer: HttpTransfer;
+topup_guest_answer: [8192]u8;
+topup_guest_funding: DewFunding;
+topup_guest_account: [65]u8;
+topup_guest_alias: [40]u8;
+
+// The newest deposits of the signed-in account, read from Entity's last list.
+topup_deposits: [3]DewDeposit;
+topup_deposit_count: s32 = -1;
+topup_deposits_parsed_at: float64 = -100000.0;
+topup_credited: s64 = -1;
 
 // The QR code of the current wallet link, built only when the link changes.
 QrRect :: struct { column: s32; row: s32; width: s32; height: s32 }
@@ -87,23 +117,77 @@ topup_qr_count: s32;
 topup_link: [1024]u8;
 topup_wallet: [512]u8;
 
-// Keeps the balance, address and rate fresh. Requests share Entity's one
-// Dew queue, so each waits for the previous to finish.
+// The page's language ("de", "es" or anything else for English) and its
+// query, such as "?account=ID&lang=de".
+TopupStart :: (query: string, language: string) {
+    chosen: [8]u8
+    asked := QueryValue(query, "lang", chosen[:])
+    topup_copy = TopupCopyFor(ifx asked != "" then asked else language)
+    if QueryValue(query, "account", topup_reference[:]) != "" { topup_guest_state = TOPUP_GUEST_LOADING }
+}
+
+// Keeps the balance, address, deposits and rate fresh. Requests share
+// Entity's one Dew queue, so each waits for the previous to finish.
 TopupPump :: (now: float64) {
     TopupRatesPump(now)
+    TopupGuestPump(now)
     status := EntityHostDewStatus()
-    if !status.ready || status.busy { return }
-    if !status.known && now - topup_refreshed_at > 10000.0 {
-        if EntityHostDewRequest("refresh") { topup_refreshed_at = now }
+    if !status.ready {
+        topup_deposit_count = -1
+        topup_credited = -1
         return
     }
-    if !status.funded && status.funding_allowed && now - topup_address_at > 15000.0 {
-        if EntityHostDewRequest("address") { topup_address_at = now }
+    if now - topup_deposits_parsed_at > 2000.0 {
+        topup_deposits_parsed_at = now
+        TopupReadDeposits()
+    }
+    if status.busy { return }
+    if topup_attempt_pending {
+        topup_attempt_pending = false
+        if status.error {
+            if topup_failures < 5 { topup_failures += 1 }
+            topup_retry_at = now + 10000.0 * cast(float64)(1 << cast(u32)(topup_failures - 1))
+            if topup_retry_at > now + 300000.0 { topup_retry_at = now + 300000.0 }
+        } else {
+            topup_failures = 0
+            topup_retry_at = 0.0
+        }
+    }
+    if now < topup_retry_at { return }
+    if !status.known || status.error && now - topup_refreshed_at > 10000.0 {
+        if EntityHostDewRequest("refresh") { topup_refreshed_at = now; topup_attempt_pending = true }
+        return
+    }
+    if !status.funded && status.funding_allowed {
+        if EntityHostDewRequest("address") { topup_address_at = now; topup_attempt_pending = true }
+        return
+    }
+    if status.funded && now - topup_deposits_at > 20000.0 {
+        if EntityHostDewRequest("deposits") { topup_deposits_at = now; topup_attempt_pending = true }
         return
     }
     if now - topup_refreshed_at > 30000.0 {
-        if EntityHostDewRequest("refresh") { topup_refreshed_at = now }
+        if EntityHostDewRequest("refresh") { topup_refreshed_at = now; topup_attempt_pending = true }
     }
+}
+
+// Asks again at once, from the Retry button.
+TopupRetry :: () {
+    topup_retry_at = 0.0
+    topup_refreshed_at = -100000.0
+}
+
+// A deposit the node newly credits refreshes the balance at once.
+TopupReadDeposits :: () {
+    count := DewParseDeposits(EntityHostDewDeposits(), topup_deposits[:])
+    if count < 0 { return }
+    topup_deposit_count = count
+    credited: s64 = 0
+    for index: 0..count - 1 {
+        if TextUntilNul(topup_deposits[index].status[:]) == "credited" { credited += 1 }
+    }
+    if topup_credited >= 0 && credited > topup_credited { topup_refreshed_at = -100000.0 }
+    topup_credited = credited
 }
 
 TopupRatesPump :: (now: float64) {
@@ -127,16 +211,53 @@ TopupRatesPump :: (now: float64) {
     topup_rates_running = HttpTransferStart(*topup_rates_transfer, request, topup_rates_answer[:], 20000)
 }
 
+// The public address of the account a link names; no sign-in needed.
+TopupGuestPump :: (now: float64) {
+    if topup_guest_running {
+        status: s32
+        done := HttpTransferPoll(*topup_guest_transfer, *status)
+        if done < 0 { return }
+        topup_guest_running = false
+        if done == 1 && status == 200 && DewParseRecipient(TextUntilNul(topup_guest_answer[:]),
+            *topup_guest_funding, topup_guest_account[:], topup_guest_alias[:]) {
+            topup_guest_state = TOPUP_GUEST_KNOWN
+        } else if done == 1 && (status == 400 || status == 404) {
+            topup_guest_state = TOPUP_GUEST_INVALID
+        }
+        HttpTransferCancel(*topup_guest_transfer)
+        return
+    }
+    if topup_guest_state != TOPUP_GUEST_LOADING || now - topup_guest_at < 15000.0 { return }
+    topup_guest_at = now
+    url: [256]u8
+    at: s64 = 0
+    if !Append(url[:], *at, "https://api.waozi.xyz/api/v1/tokens/purchases/monero/address/") ||
+    !Append(url[:], *at, TextUntilNul(topup_reference[:])) {
+        topup_guest_state = TOPUP_GUEST_INVALID
+        return
+    }
+    request := HttpRequest.{.method = "GET", .url = TextUntilNul(url[:]), .accept = "application/json"}
+    topup_guest_answer = .{}
+    topup_guest_running = HttpTransferStart(*topup_guest_transfer, request, topup_guest_answer[:], 20000)
+}
+
 // Draws the page; returns TOPUP_SIGN_IN or TOPUP_PROFILE when the Profile
 // should open.
 TopupFrame :: (session: Session, viewport: Rectangle, input: TextFieldInput, now: float64) -> s32 {
+    copy := topup_copy
     action: s32 = TOPUP_NONE
     status := EntityHostDewStatus()
-    rate := ifx status.funded then DewRate.{status.funding.atomic, status.funding.units} else topup_rates.rate
+    // A link to the signed-in account's own address is the ordinary page.
+    guest := topup_guest_state == TOPUP_GUEST_KNOWN &&
+    !(status.funded && TextUntilNul(status.funding.address[:]) == TextUntilNul(topup_guest_funding.address[:]))
+    funded := guest || status.funded
+    funding := ifx guest then topup_guest_funding else status.funding
+    rate := ifx funded then DewRate.{funding.atomic, funding.units} else topup_rates.rate
     usd := ifx topup_rates_known then topup_rates.usd_cents else cast(s64)0
     dew := ifx topup_preset >= 0 then DEW_PRESETS[topup_preset] else DewTyped(TextUntilNul(topup_typed[:]))
     atomic := DewAtomic(dew, rate)
     minimum := DewAtLeast(TROCADOR_MINIMUM_ATOMIC, rate)
+    filled: [512]u8
 
     Box(session, BoxProps.{.key = cast(u64)60000, .bounds = viewport, .fill = ColorFromPacked(cast(u32)DEW_BACKGROUND)})
     scroll := Scroll(session, ScrollProps.{.key = cast(u64)60001, .bounds = viewport,
@@ -156,31 +277,47 @@ TopupFrame :: (session: Session, viewport: Rectangle, input: TextFieldInput, now
     SvgIcon(session, SvgIconProps.{.shape = DROP_SHAPE, .color = Color.{255, 255, 255, 255},
             .bounds = Rectangle.{x + 12.0, y + 11.0, 24.0, 26.0}})
     Text(session, TextProps.{.key = cast(u64)60003, .text = "Dew", .font = 32,
-            .bounds = Rectangle.{x + 62.0, y + 4.0, column - 200.0, 40.0}})
-    profile_label := ifx status.ready then "Profile" else "Sign in"
-    if Button(session, ButtonProps.{.key = cast(u64)60004, .id = 60004, .label = profile_label,
-            .bounds = Rectangle.{x + column - 120.0, y + 4.0, 120.0, 40.0},
+            .bounds = Rectangle.{x + 62.0, y + 4.0, column - 220.0, 40.0}})
+    if Button(session, ButtonProps.{.key = cast(u64)60004, .id = 60004,
+            .label = ifx status.ready then copy.profile else copy.sign_in,
+            .bounds = Rectangle.{x + column - 140.0, y + 4.0, 140.0, 40.0},
             .tone = ButtonTone.ButtonToneAccent, .emphasis = ButtonEmphasis.ButtonEmphasisSoft}) != 0 {
         action = ifx status.ready then TOPUP_PROFILE else TOPUP_SIGN_IN
     }
     y += 62.0
-    Line(session, 60005, "One currency for every Waozi app. Top it up here with Monero or almost any other coin.", x, *y, column, 17, 26.0)
+    Line(session, 60005, copy.tagline, x, *y, column, 17, 26.0)
 
-    // The balance.
+    // Whose Dew, and the balance.
     inner := column - 36.0
     card_y := y
     Card(session, 60010, x, y, column, topup_card_heights[0])
     y += 18.0
+    if guest {
+        name := TextUntilNul(topup_guest_alias[:])
+        short: [16]u8
+        if name == "" {
+            unused CopyCString(TextUntilNul(topup_guest_account[:])[:8], short[:])
+            name = TextUntilNul(short[:])
+        }
+        Line(session, 60019, Fill(copy.guest_for, name, "", "", filled[:]), x + 18.0, *y, inner, 18, 10.0)
+    }
+    if topup_guest_state == TOPUP_GUEST_INVALID {
+        Line(session, 60009, copy.account_invalid, x + 18.0, *y, inner, 15, 10.0)
+    }
     if !status.ready {
-        Line(session, 60011, "Sign in with your Waozi profile to see your Dew and top it up.", x + 18.0, *y, inner, 18, 10.0)
-        Line(session, 60012, "Use the same profile as in Inner Breeze, Arcade or Shovey: link this browser from the app, or import your key.", x + 18.0, *y, inner, 14, 14.0)
-        if Button(session, ButtonProps.{.key = cast(u64)60013, .id = 60013, .label = "Sign in",
+        if guest {
+            Line(session, 60012, copy.guest_hint, x + 18.0, *y, inner, 14, 14.0)
+        } else {
+            Line(session, 60011, copy.sign_in_title, x + 18.0, *y, inner, 18, 10.0)
+            Line(session, 60012, copy.sign_in_hint, x + 18.0, *y, inner, 14, 14.0)
+        }
+        if Button(session, ButtonProps.{.key = cast(u64)60013, .id = 60013, .label = copy.sign_in,
                 .bounds = Rectangle.{x + 18.0, y, inner, 48.0}, .tone = ButtonTone.ButtonToneAccent}) != 0 {
             action = TOPUP_SIGN_IN
         }
         y += 48.0
     } else {
-        Line(session, 60014, "Your balance", x + 18.0, *y, inner, 14, 4.0)
+        Line(session, 60014, copy.balance, x + 18.0, *y, inner, 14, 4.0)
         amount: [64]u8
         balance := "…"
         if status.known && DewFormat(status.account.balance, DewUnits, amount[:], "Dew") { balance = TextUntilNul(amount[:]) }
@@ -191,23 +328,46 @@ TopupFrame :: (session: Session, viewport: Rectangle, input: TextFieldInput, now
         }
         who := TextUntilNul(status.alias[:])
         if who == "" { who = TextUntilNul(status.name[:]) }
-        if who != "" {
-            signed: [128]u8
-            Line(session, 60017, Joined("Signed in as ", who, signed[:]), x + 18.0, *y, inner, 14, 4.0)
-        }
+        if who != "" { Line(session, 60017, Fill(copy.signed_in_as, who, "", "", filled[:]), x + 18.0, *y, inner, 14, 4.0) }
         if status.error {
-            Line(session, 60018, "The node did not answer. The balance shown is the last one it confirmed.", x + 18.0, *y, inner, 14, 4.0)
+            wait := cast(s64)((topup_retry_at - now) / 1000.0) + 1
+            seconds: [24]u8
+            Line(session, 60018, ifx topup_retry_at > now then Fill(copy.node_retry, FormatInteger(wait, seconds[:]), "", "", filled[:]) else copy.node_error,
+                x + 18.0, *y, inner, 14, 8.0)
+            if topup_retry_at > now && Button(session, ButtonProps.{.key = cast(u64)60008, .id = 60008, .label = copy.retry_now,
+                    .bounds = Rectangle.{x + 18.0, y, 180.0, 40.0}, .tone = ButtonTone.ButtonToneAccent,
+                    .emphasis = ButtonEmphasis.ButtonEmphasisSoft}) != 0 {
+                TopupRetry()
+            }
+            if topup_retry_at > now { y += 48.0 }
         }
     }
     y += 18.0
     topup_card_heights[0] = y - card_y
     y += 16.0
 
+    // Payments on their way to the signed-in account.
+    if status.ready && status.funded && !guest && topup_deposit_count >= 0 {
+        card_y = y
+        Card(session, 60060, x, y, column, topup_card_heights[1])
+        y += 18.0
+        Line(session, 60061, copy.incoming, x + 18.0, *y, inner, 21, 10.0)
+        if topup_deposit_count == 0 { Line(session, 60062, copy.no_deposits, x + 18.0, *y, inner, 15, 0.0) }
+        for index: 0..topup_deposit_count - 1 {
+            line: [256]u8
+            Line(session, cast(u64)(60063 + index), DepositText(topup_deposits[index], funding.confirmations, line[:]),
+                x + 18.0, *y, inner, 15, 6.0)
+        }
+        y += 18.0
+        topup_card_heights[1] = y - card_y
+        y += 16.0
+    }
+
     // How much Dew.
     card_y = y
-    Card(session, 60020, x, y, column, topup_card_heights[1])
+    Card(session, 60020, x, y, column, topup_card_heights[2])
     y += 18.0
-    Line(session, 60021, "How much Dew?", x + 18.0, *y, inner, 21, 12.0)
+    Line(session, 60021, copy.how_much, x + 18.0, *y, inner, 21, 12.0)
     gap: float32 = 8.0
     chip := (inner - gap * 3.0) / 4.0
     for index: 0..3 {
@@ -223,73 +383,78 @@ TopupFrame :: (session: Session, viewport: Rectangle, input: TextFieldInput, now
         }
     }
     y += 56.0
-    if AmountInput(session, Rectangle.{x + 18.0, y, inner, 46.0}, input) && topup_typed[0] != cast(u8)0 { topup_preset = -1 }
+    if AmountInput(session, Rectangle.{x + 18.0, y, inner, 46.0}, input, copy) && topup_typed[0] != cast(u8)0 { topup_preset = -1 }
     if topup_field.focused && topup_typed[0] != cast(u8)0 { topup_preset = -1 }
     y += 56.0
-    summary: [192]u8
-    Line(session, 60027, AmountText(dew, atomic, usd, summary[:]), x + 18.0, *y, inner, 16, 0.0)
+    Line(session, 60027, AmountText(dew, atomic, usd, filled[:]), x + 18.0, *y, inner, 16, 0.0)
     y += 18.0
-    topup_card_heights[1] = y - card_y
+    topup_card_heights[2] = y - card_y
     y += 16.0
 
     // Monero, any amount.
     card_y = y
-    Card(session, 60030, x, y, column, topup_card_heights[2])
+    Card(session, 60030, x, y, column, topup_card_heights[3])
     y += 18.0
-    Line(session, 60031, "Pay with Monero", x + 18.0, *y, inner, 21, 8.0)
-    Line(session, 60032, "Any amount works. You get Dew for exactly the Monero that arrives.", x + 18.0, *y, inner, 15, 14.0)
-    if !status.ready {
-        Line(session, 60033, "Sign in to see your own Monero address.", x + 18.0, *y, inner, 15, 0.0)
-    } else if !status.funded {
-        Line(session, 60034, ifx status.error then "Your address could not be loaded yet. Trying again…" else "Getting your address…", x + 18.0, *y, inner, 15, 0.0)
-    } else {
-        address := TextUntilNul(status.funding.address[:])
+    Line(session, 60031, copy.pay_monero, x + 18.0, *y, inner, 21, 8.0)
+    Line(session, 60032, copy.any_amount, x + 18.0, *y, inner, 15, 14.0)
+    if funded {
+        address := TextUntilNul(funding.address[:])
         wallet := MoneroUri(address, ifx atomic > 0 then atomic else cast(s64)0, topup_wallet[:])
         side := DrawQr(session, wallet, x + 18.0, y, inner)
         if side > 0.0 { y += side + 14.0 }
         Line(session, 60035, address, x + 18.0, *y, inner, 15, 12.0)
         copied := now < topup_copied_until
-        if Button(session, ButtonProps.{.key = cast(u64)60036, .id = 60036, .label = ifx copied then "Copied" else "Copy address",
+        if Button(session, ButtonProps.{.key = cast(u64)60036, .id = 60036, .label = ifx copied then copy.copied else copy.copy_address,
                 .bounds = Rectangle.{x + 18.0, y, inner, 46.0}, .tone = ButtonTone.ButtonToneAccent,
                 .emphasis = ButtonEmphasis.ButtonEmphasisSoft}) != 0 {
             if SystemClipboardSet(address) { topup_copied_until = now + 2000.0 }
         }
         y += 58.0
-        wait: [160]u8
-        Line(session, 60037, ConfirmationText(status.funding.confirmations, wait[:]), x + 18.0, *y, inner, 14, 0.0)
+        minutes: [24]u8
+        count: [24]u8
+        Line(session, 60037, Fill(copy.confirmations, FormatInteger(funding.confirmations, count[:]),
+            FormatInteger(funding.confirmations * 2, minutes[:]), "", filled[:]), x + 18.0, *y, inner, 14, 0.0)
+    } else if !status.ready && topup_guest_state != TOPUP_GUEST_LOADING {
+        Line(session, 60033, copy.sign_in_address, x + 18.0, *y, inner, 15, 0.0)
+    } else {
+        Line(session, 60034, ifx status.error then copy.address_retry else copy.address_loading, x + 18.0, *y, inner, 15, 0.0)
     }
     y += 18.0
-    topup_card_heights[2] = y - card_y
+    topup_card_heights[3] = y - card_y
     y += 16.0
 
     // Any other coin, through Trocador.
     card_y = y
-    Card(session, 60040, x, y, column, topup_card_heights[3])
+    Card(session, 60040, x, y, column, topup_card_heights[4])
     y += 18.0
-    Line(session, 60041, "Pay with another coin", x + 18.0, *y, inner, 21, 8.0)
-    Line(session, 60042, "Bitcoin, Ethereum, Litecoin, USDT and hundreds more. Trocador swaps your coin to Monero and sends it to your Dew address.", x + 18.0, *y, inner, 15, 14.0)
+    Line(session, 60041, copy.other_coin, x + 18.0, *y, inner, 21, 8.0)
+    Line(session, 60042, copy.other_coin_body, x + 18.0, *y, inner, 15, 14.0)
     link := ""
-    if status.funded && atomic > 0 { link = TrocadorUrl(TextUntilNul(status.funding.address[:]), atomic, dew, topup_link[:]) }
-    pay: [96]u8
-    if Button(session, ButtonProps.{.key = cast(u64)60043, .id = 60043, .label = PayText(dew, pay[:]),
+    if funded && atomic > 0 { link = TrocadorUrl(TextUntilNul(funding.address[:]), atomic, dew, copy.language, topup_link[:]) }
+    digits: [24]u8
+    pay: [128]u8
+    pay_label := ifx dew > 0 then Fill(copy.pay_other, FormatInteger(dew, digits[:]), "", "", pay[:]) else copy.other_coin
+    if Button(session, ButtonProps.{.key = cast(u64)60043, .id = 60043, .label = pay_label,
             .bounds = Rectangle.{x + 18.0, y, inner, 48.0}, .tone = ButtonTone.ButtonToneAccent,
             .disabled = link == ""}) != 0 && link != "" {
         unused OpenUri(link)
     }
     y += 60.0
-    if !status.ready {
-        Line(session, 60044, "Sign in first, so Trocador sends to your own address.", x + 18.0, *y, inner, 14, 6.0)
+    if !funded && !status.ready && topup_guest_state != TOPUP_GUEST_LOADING {
+        Line(session, 60044, copy.sign_in_first, x + 18.0, *y, inner, 14, 6.0)
     } else if minimum > 0 && dew < minimum {
-        least: [160]u8
-        Line(session, 60045, MinimumText(minimum, rate, least[:]), x + 18.0, *y, inner, 14, 6.0)
+        least: [24]u8
+        xmr: [48]u8
+        Line(session, 60045, Fill(copy.minimum, FormatInteger(minimum, least[:]), XmrText(TROCADOR_MINIMUM_ATOMIC, xmr[:]), "", filled[:]),
+            x + 18.0, *y, inner, 14, 6.0)
     }
-    fee: [192]u8
-    Line(session, 60046, FeeText(dew, fee[:]), x + 18.0, *y, inner, 14, 0.0)
+    fee := ifx dew > 0 then Fill(copy.fee, FormatInteger(dew, digits[:]), "", "", filled[:]) else copy.opens
+    Line(session, 60046, fee, x + 18.0, *y, inner, 14, 0.0)
     y += 18.0
-    topup_card_heights[3] = y - card_y
+    topup_card_heights[4] = y - card_y
     y += 24.0
 
-    Line(session, 60050, "Dew works in every Waozi app: unlock practices and storage in Inner Breeze, dress up in Apfelwurm, earn it in Shovey and send it to friends.", x, *y, column, 15, 10.0)
+    Line(session, 60050, copy.footer, x, *y, column, 15, 10.0)
     if Button(session, ButtonProps.{.key = cast(u64)60051, .id = 60051, .label = "waozi.xyz",
             .bounds = Rectangle.{x, y, 140.0, 40.0}, .tone = ButtonTone.ButtonToneAccent,
             .emphasis = ButtonEmphasis.ButtonEmphasisGhost}) != 0 {
@@ -316,11 +481,11 @@ Line :: (session: Session, key: u64, text: string, x: float32, y: *float32, widt
     y.* += height + gap
 }
 
-AmountInput :: (session: Session, bounds: Rectangle, input: TextFieldInput) -> bool {
+AmountInput :: (session: Session, bounds: Rectangle, input: TextFieldInput, copy: TopupCopy) -> bool {
     snapshot: [16]u8
     snapshot = topup_typed
     props := TextFieldProps.{.key = cast(u64)60026, .focus_id = 60026, .bounds = bounds,
-        .label = "Other amount", .placeholder = "Other amount in Dew",
+        .label = copy.other_amount, .placeholder = copy.other_amount_hint,
         .value = TextUntilNul(snapshot[:]), .cursor = topup_field.cursor, .anchor = topup_field.anchor,
         .scroll_x = topup_field.scroll_x, .focused = topup_field.focused,
         .max_bytes = 7, .max_codepoints = 7, .numeric = true}
@@ -404,78 +569,49 @@ QrBuild :: () {
     }
 }
 
-Joined :: (first: string, second: string, output: []u8) -> string {
+// "0.05 XMR · about $29.53".
+XmrAndUsd :: (atomic: s64, usd_cents: s64, output: []u8) -> string {
+    xmr: [48]u8
+    dollars: [48]u8
+    about: [96]u8
     at: s64 = 0
-    if !Append(output, *at, first) || !Append(output, *at, second) { return first }
+    if !Append(output, *at, XmrText(atomic, xmr[:])) { return "" }
+    usd := UsdText(UsdCents(atomic, usd_cents), dollars[:])
+    if usd != "" && (!Append(output, *at, " · ") || !Append(output, *at, Fill(topup_copy.about, usd, "", "", about[:]))) { return "" }
     return TextUntilNul(output)
 }
 
-// "0.1234 XMR · about $72.90" for a balance in token units.
+// A balance in token units as Monero and dollars.
 WorthText :: (units: s64, rate: DewRate, usd_cents: s64, output: []u8) -> string {
     reduced := ReducedRate(rate)
     if reduced.units <= 0 || units < 0 || units > 9223372036854775807 / reduced.atomic { return "" }
-    atomic := units * reduced.atomic / reduced.units
-    xmr: [48]u8
-    dollars: [48]u8
-    at: s64 = 0
-    if !Append(output, *at, XmrText(atomic, xmr[:])) { return "" }
-    worth := UsdText(UsdCents(atomic, usd_cents), dollars[:])
-    if worth != "" && (!Append(output, *at, " · ") || !Append(output, *at, worth)) { return "" }
-    return TextUntilNul(output)
+    return XmrAndUsd(units * reduced.atomic / reduced.units, usd_cents, output)
 }
 
 // "500 Dew = 0.05 XMR · about $29.54".
 AmountText :: (dew: s64, atomic: s64, usd_cents: s64, output: []u8) -> string {
-    if dew <= 0 { return "Choose an amount, or type any whole number of Dew." }
-    if atomic <= 0 { return "Loading the rate…" }
+    if dew <= 0 { return topup_copy.choose_amount }
+    if atomic <= 0 { return topup_copy.loading_rate }
     digits: [24]u8
+    worth: [160]u8
+    return Fill(topup_copy.amount, FormatInteger(dew, digits[:]), XmrAndUsd(atomic, usd_cents, worth[:]), "", output)
+}
+
+// One deposit as "0.05 XMR · 3 of 10 confirmations" or what became of it.
+DepositText :: (deposit: DewDeposit, required: s64, output: []u8) -> string {
     xmr: [48]u8
-    dollars: [48]u8
-    at: s64 = 0
-    if !Append(output, *at, FormatInteger(dew, digits[:])) || !Append(output, *at, " Dew = ") ||
-    !Append(output, *at, XmrText(atomic, xmr[:])) { return "" }
-    worth := UsdText(UsdCents(atomic, usd_cents), dollars[:])
-    if worth != "" && (!Append(output, *at, " · ") || !Append(output, *at, worth)) { return "" }
-    return TextUntilNul(output)
-}
-
-PayText :: (dew: s64, output: []u8) -> string {
-    if dew <= 0 { return "Pay with another coin" }
-    digits: [24]u8
-    at: s64 = 0
-    if !Append(output, *at, "Pay ") || !Append(output, *at, FormatInteger(dew, digits[:])) ||
-    !Append(output, *at, " Dew with another coin") { return "Pay with another coin" }
-    return TextUntilNul(output)
-}
-
-// "Other coins need at least 100 Dew (0.01 XMR)."
-MinimumText :: (minimum: s64, rate: DewRate, output: []u8) -> string {
-    digits: [24]u8
-    xmr: [48]u8
-    at: s64 = 0
-    if !Append(output, *at, "Other coins need at least ") || !Append(output, *at, FormatInteger(minimum, digits[:])) ||
-    !Append(output, *at, " Dew (") || !Append(output, *at, XmrText(TROCADOR_MINIMUM_ATOMIC, xmr[:])) ||
-    !Append(output, *at, "). Monero takes any amount.") { return "" }
-    return TextUntilNul(output)
-}
-
-FeeText :: (dew: s64, output: []u8) -> string {
-    if dew <= 0 { return "Opens trocador.app in a new tab." }
-    digits: [24]u8
-    at: s64 = 0
-    if !Append(output, *at, "Opens trocador.app in a new tab. Trocador adds its swap fee to what you pay, so ") ||
-    !Append(output, *at, FormatInteger(dew, digits[:])) ||
-    !Append(output, *at, " Dew reach you; whatever Monero arrives becomes Dew.") { return "" }
-    return TextUntilNul(output)
-}
-
-// Monero adds a block about every two minutes.
-ConfirmationText :: (confirmations: s64, output: []u8) -> string {
-    digits: [24]u8
-    minutes: [24]u8
-    at: s64 = 0
-    if !Append(output, *at, "Your Dew arrives after ") || !Append(output, *at, FormatInteger(confirmations, digits[:])) ||
-    !Append(output, *at, " confirmations, about ") || !Append(output, *at, FormatInteger(confirmations * 2, minutes[:])) ||
-    !Append(output, *at, " minutes after you send.") { return "" }
-    return TextUntilNul(output)
+    first: [24]u8
+    second: [24]u8
+    amount := XmrText(deposit.atomic, xmr[:])
+    state := TextUntilNul(deposit.status[:])
+    if state == "credited" {
+        dew: [48]u8
+        unused DewFormat(deposit.units, DewUnits, dew[:])
+        return Fill(topup_copy.deposit_credited, amount, TextUntilNul(dew[:]), "", output)
+    }
+    if state == "confirmed" { return Fill(topup_copy.deposit_confirmed, amount, "", "", output) }
+    if state == "below_minimum" { return Fill(topup_copy.deposit_below, amount, "", "", output) }
+    if state == "double_spend" { return Fill(topup_copy.deposit_double, amount, "", "", output) }
+    seen := ifx deposit.confirmations < required then deposit.confirmations else required
+    return Fill(topup_copy.deposit_confirming, amount, FormatInteger(seen, first[:]), FormatInteger(required, second[:]), output)
 }

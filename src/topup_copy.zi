@@ -1,0 +1,207 @@
+// The page's words in English, German and Spanish. %1, %2 and %3 stand for
+// the values Fill puts in, so each language keeps its own word order.
+TopupCopy :: struct {
+    language: string
+    tagline: string
+    sign_in: string
+    profile: string
+    back: string
+    sign_in_title: string
+    sign_in_hint: string
+    balance: string
+    signed_in_as: string
+    node_error: string
+    node_retry: string
+    retry_now: string
+    guest_for: string
+    guest_hint: string
+    account_invalid: string
+    how_much: string
+    other_amount: string
+    other_amount_hint: string
+    choose_amount: string
+    loading_rate: string
+    amount: string
+    about: string
+    pay_monero: string
+    any_amount: string
+    sign_in_address: string
+    address_retry: string
+    address_loading: string
+    copy_address: string
+    copied: string
+    confirmations: string
+    incoming: string
+    no_deposits: string
+    deposit_confirming: string
+    deposit_confirmed: string
+    deposit_credited: string
+    deposit_below: string
+    deposit_double: string
+    other_coin: string
+    other_coin_body: string
+    pay_other: string
+    sign_in_first: string
+    minimum: string
+    opens: string
+    fee: string
+    footer: string
+}
+
+TopupEnglish :: () -> TopupCopy {
+    return TopupCopy.{
+        .language = "en",
+        .tagline = "One currency for every Waozi app. Top it up here with Monero or almost any other coin.",
+        .sign_in = "Sign in",
+        .profile = "Profile",
+        .back = "Back",
+        .sign_in_title = "Sign in with your profile to see your Dew and top it up.",
+        .sign_in_hint = "Use the same profile as in Inner Breeze, Arcade or Shovey: link this browser from the app, or import your key.",
+        .balance = "Your balance",
+        .signed_in_as = "Signed in as %1",
+        .node_error = "The node did not answer. The balance shown is the last one it confirmed.",
+        .node_retry = "The Dew node is not answering right now. Trying again in %1 s.",
+        .retry_now = "Retry now",
+        .guest_for = "You are topping up Dew for %1.",
+        .guest_hint = "Sign in to see the balance. You don't need to for paying.",
+        .account_invalid = "That account link is not valid. Sign in to top up your own Dew.",
+        .how_much = "How much Dew?",
+        .other_amount = "Other amount",
+        .other_amount_hint = "Other amount in Dew",
+        .choose_amount = "Choose an amount, or type any whole number of Dew.",
+        .loading_rate = "Loading the rate…",
+        .amount = "%1 Dew = %2",
+        .about = "about %1",
+        .pay_monero = "Pay with Monero",
+        .any_amount = "Any amount works. You get Dew for exactly the Monero that arrives.",
+        .sign_in_address = "Sign in to see your own Monero address.",
+        .address_retry = "The address could not be loaded yet. Trying again…",
+        .address_loading = "Getting the address…",
+        .copy_address = "Copy address",
+        .copied = "Copied",
+        .confirmations = "Dew arrives after %1 confirmations, about %2 minutes after you send.",
+        .incoming = "Incoming payments",
+        .no_deposits = "No payment seen yet. It shows up here as soon as it reaches the network.",
+        .deposit_confirming = "%1 · %2 of %3 confirmations",
+        .deposit_confirmed = "%1 · confirmed, adding Dew…",
+        .deposit_credited = "%1 · %2 Dew added",
+        .deposit_below = "%1 · below the minimum",
+        .deposit_double = "%1 · rejected (double spend)",
+        .other_coin = "Pay with another coin",
+        .other_coin_body = "Bitcoin, Ethereum, Litecoin, USDT and hundreds more. Trocador swaps the coin to Monero and sends it to the Dew address.",
+        .pay_other = "Buy %1 Dew with another coin",
+        .sign_in_first = "Sign in first, so Trocador sends to your own address.",
+        .minimum = "Other coins need at least %1 Dew (%2). Monero takes any amount.",
+        .opens = "Opens trocador.app in a new tab.",
+        .fee = "Opens trocador.app in a new tab. Trocador adds its swap fee to what you pay, so %1 Dew arrive; whatever Monero arrives becomes Dew.",
+        .footer = "Dew works in every Waozi app: unlock practices and storage in Inner Breeze, dress up your worm in Apfelwurm and earn it in Shovey."}
+}
+
+TopupGerman :: () -> TopupCopy {
+    return TopupCopy.{
+        .language = "de",
+        .tagline = "Eine Währung für alle Waozi-Apps. Lade sie hier mit Monero oder fast jedem anderen Coin auf.",
+        .sign_in = "Anmelden",
+        .profile = "Profil",
+        .back = "Zurück",
+        .sign_in_title = "Melde dich mit deinem Profil an, um dein Dew zu sehen und aufzuladen.",
+        .sign_in_hint = "Nutze dasselbe Profil wie in Inner Breeze, Arcade oder Shovey: Verknüpfe diesen Browser in der App oder importiere deinen Schlüssel.",
+        .balance = "Dein Guthaben",
+        .signed_in_as = "Angemeldet als %1",
+        .node_error = "Der Knoten hat nicht geantwortet. Das angezeigte Guthaben ist das zuletzt bestätigte.",
+        .node_retry = "Der Dew-Knoten antwortet gerade nicht. Neuer Versuch in %1 s.",
+        .retry_now = "Jetzt erneut versuchen",
+        .guest_for = "Du lädst Dew für %1 auf.",
+        .guest_hint = "Melde dich an, um das Guthaben zu sehen. Zum Bezahlen ist das nicht nötig.",
+        .account_invalid = "Dieser Kontolink ist ungültig. Melde dich an, um dein eigenes Dew aufzuladen.",
+        .how_much = "Wie viel Dew?",
+        .other_amount = "Anderer Betrag",
+        .other_amount_hint = "Anderer Betrag in Dew",
+        .choose_amount = "Wähle einen Betrag oder gib eine ganze Zahl Dew ein.",
+        .loading_rate = "Kurs wird geladen …",
+        .amount = "%1 Dew = %2",
+        .about = "etwa %1",
+        .pay_monero = "Mit Monero bezahlen",
+        .any_amount = "Jeder Betrag funktioniert. Du bekommst Dew für genau das Monero, das ankommt.",
+        .sign_in_address = "Melde dich an, um deine eigene Monero-Adresse zu sehen.",
+        .address_retry = "Die Adresse konnte noch nicht geladen werden. Neuer Versuch …",
+        .address_loading = "Adresse wird geladen …",
+        .copy_address = "Adresse kopieren",
+        .copied = "Kopiert",
+        .confirmations = "Dew kommt nach %1 Bestätigungen an, etwa %2 Minuten nach dem Senden.",
+        .incoming = "Eingehende Zahlungen",
+        .no_deposits = "Noch keine Zahlung gesehen. Sie erscheint hier, sobald sie im Netzwerk ist.",
+        .deposit_confirming = "%1 · %2 von %3 Bestätigungen",
+        .deposit_confirmed = "%1 · bestätigt, Dew wird gutgeschrieben …",
+        .deposit_credited = "%1 · %2 Dew gutgeschrieben",
+        .deposit_below = "%1 · unter dem Mindestbetrag",
+        .deposit_double = "%1 · abgelehnt (doppelt ausgegeben)",
+        .other_coin = "Mit einem anderen Coin bezahlen",
+        .other_coin_body = "Bitcoin, Ethereum, Litecoin, USDT und Hunderte mehr. Trocador tauscht den Coin in Monero und schickt es an die Dew-Adresse.",
+        .pay_other = "%1 Dew mit anderem Coin kaufen",
+        .sign_in_first = "Melde dich zuerst an, damit Trocador an deine eigene Adresse sendet.",
+        .minimum = "Andere Coins brauchen mindestens %1 Dew (%2). Monero nimmt jeden Betrag.",
+        .opens = "Öffnet trocador.app in einem neuen Tab.",
+        .fee = "Öffnet trocador.app in einem neuen Tab. Trocador schlägt seine Tauschgebühr auf deinen Betrag auf, damit %1 Dew ankommen; jedes ankommende Monero wird zu Dew.",
+        .footer = "Dew funktioniert in jeder Waozi-App: Schalte Übungen und Speicher in Inner Breeze frei, kleide deinen Wurm in Apfelwurm ein und verdiene es in Shovey."}
+}
+
+TopupSpanish :: () -> TopupCopy {
+    return TopupCopy.{
+        .language = "es",
+        .tagline = "Una moneda para todas las apps de Waozi. Recárgala aquí con Monero o casi cualquier otra moneda.",
+        .sign_in = "Iniciar sesión",
+        .profile = "Perfil",
+        .back = "Atrás",
+        .sign_in_title = "Inicia sesión con tu perfil para ver tu Dew y recargarlo.",
+        .sign_in_hint = "Usa el mismo perfil que en Inner Breeze, Arcade o Shovey: vincula este navegador desde la app o importa tu clave.",
+        .balance = "Tu saldo",
+        .signed_in_as = "Sesión iniciada como %1",
+        .node_error = "El nodo no respondió. El saldo mostrado es el último que confirmó.",
+        .node_retry = "El nodo de Dew no responde ahora mismo. Reintentando en %1 s.",
+        .retry_now = "Reintentar ahora",
+        .guest_for = "Estás recargando Dew para %1.",
+        .guest_hint = "Inicia sesión para ver el saldo. No hace falta para pagar.",
+        .account_invalid = "Ese enlace de cuenta no es válido. Inicia sesión para recargar tu propio Dew.",
+        .how_much = "¿Cuánto Dew?",
+        .other_amount = "Otra cantidad",
+        .other_amount_hint = "Otra cantidad en Dew",
+        .choose_amount = "Elige una cantidad o escribe cualquier número entero de Dew.",
+        .loading_rate = "Cargando la tasa…",
+        .amount = "%1 Dew = %2",
+        .about = "unos %1",
+        .pay_monero = "Pagar con Monero",
+        .any_amount = "Funciona cualquier cantidad. Recibes Dew por exactamente el Monero que llega.",
+        .sign_in_address = "Inicia sesión para ver tu propia dirección de Monero.",
+        .address_retry = "La dirección aún no se pudo cargar. Reintentando…",
+        .address_loading = "Obteniendo la dirección…",
+        .copy_address = "Copiar dirección",
+        .copied = "Copiada",
+        .confirmations = "El Dew llega tras %1 confirmaciones, unos %2 minutos después del envío.",
+        .incoming = "Pagos entrantes",
+        .no_deposits = "Aún no se ha visto ningún pago. Aparecerá aquí en cuanto llegue a la red.",
+        .deposit_confirming = "%1 · %2 de %3 confirmaciones",
+        .deposit_confirmed = "%1 · confirmado, añadiendo Dew…",
+        .deposit_credited = "%1 · %2 Dew añadidos",
+        .deposit_below = "%1 · por debajo del mínimo",
+        .deposit_double = "%1 · rechazado (doble gasto)",
+        .other_coin = "Pagar con otra moneda",
+        .other_coin_body = "Bitcoin, Ethereum, Litecoin, USDT y cientos más. Trocador cambia la moneda a Monero y la envía a la dirección de Dew.",
+        .pay_other = "Comprar %1 Dew con otra moneda",
+        .sign_in_first = "Inicia sesión primero para que Trocador envíe a tu propia dirección.",
+        .minimum = "Otras monedas necesitan al menos %1 Dew (%2). Monero acepta cualquier cantidad.",
+        .opens = "Abre trocador.app en una pestaña nueva.",
+        .fee = "Abre trocador.app en una pestaña nueva. Trocador suma su comisión de cambio a lo que pagas, así llegan %1 Dew; todo Monero que llegue se convierte en Dew.",
+        .footer = "Dew funciona en todas las apps de Waozi: desbloquea prácticas y almacenamiento en Inner Breeze, viste a tu gusano en Apfelwurm y gánalo en Shovey."}
+}
+
+// The copy for a browser language such as "de-AT"; English otherwise.
+TopupCopyFor :: (language: string) -> TopupCopy {
+    if language.count >= 2 {
+        first := language[0] | cast(u8)32
+        second := language[1] | cast(u8)32
+        if first == cast(u8)100 && second == cast(u8)101 { return TopupGerman() }
+        if first == cast(u8)101 && second == cast(u8)115 { return TopupSpanish() }
+    }
+    return TopupEnglish()
+}

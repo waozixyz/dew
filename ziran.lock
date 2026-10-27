@@ -10,14 +10,6 @@
       "url": "https://github.com/ziranlang/qrcode.git"
     },
     {
-      "commit": "e771eb1edc7e2c641307fc5d4d185ebe4e168db0",
-      "dependencies": {"daochi_client": "p9972fcdd2d5ba999", "kryon": "p3127065409ca96f6", "monocypher": "p809b4d31a48625a3", "qrcode": "p0dfa70137405b096"},
-      "id": "p11cf3dfff58c77a3",
-      "name": "Entity",
-      "ref": "master",
-      "url": "https://github.com/waozixyz/entity.git"
-    },
-    {
       "commit": "0931212f92d5f1a3f8b1be80abab7a9695bda50e",
       "dependencies": {"raylib": "p5a77c9c35110e925"},
       "id": "p3127065409ca96f6",
@@ -36,7 +28,7 @@
     },
     {
       "commit": "22d2ddbdc236796953c905a05a2cebf5ab1b4ff3",
-      "dependencies": {"liboqs": "pe6e1a0c8fb76aa60"},
+      "dependencies": {"liboqs": "pe86510e9fb3fef51"},
       "id": "p7098ac9cd92f7e5f",
       "name": "Oqs",
       "ref": "master",
@@ -60,6 +52,14 @@
       "url": "https://github.com/ziranlang/daochi-client.git"
     },
     {
+      "commit": "1b46c4f2c750300cb1c5c46e203e14691571a72c",
+      "dependencies": {"daochi_client": "p9972fcdd2d5ba999", "kryon": "p3127065409ca96f6", "monocypher": "p809b4d31a48625a3", "qrcode": "p0dfa70137405b096"},
+      "id": "pc231a4f8596eb9ca",
+      "name": "Entity",
+      "ref": "master",
+      "url": "https://github.com/waozixyz/entity.git"
+    },
+    {
       "commit": "944826f70779a6b6cd53f6b06a75b36f4d8a2558",
       "dependencies": {},
       "id": "pc23fbf455e97614d",
@@ -68,9 +68,9 @@
       "url": "https://github.com/ziranlang/crypto.git"
     },
     {
-      "commit": "c98cd0cff056978d63b18fad8d013d58bacd9b5d",
+      "commit": "48955d1117ed6207a12d2a4c9e4162283d3420a5",
       "dependencies": {},
-      "id": "pe6e1a0c8fb76aa60",
+      "id": "pe86510e9fb3fef51",
       "name": "liboqs",
       "ref": "main",
       "source": true,
@@ -78,7 +78,7 @@
     }
   ],
   "root": {
-    "dependencies": {"entity": "p11cf3dfff58c77a3", "kryon": "p3127065409ca96f6", "qrcode": "p0dfa70137405b096"},
+    "dependencies": {"entity": "pc231a4f8596eb9ca", "kryon": "p3127065409ca96f6", "qrcode": "p0dfa70137405b096"},
     "name": "Dew"
   },
   "toolchain": {

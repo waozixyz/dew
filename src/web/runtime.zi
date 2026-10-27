@@ -22,10 +22,25 @@ using Canvas :: #import "kryon/Canvas";
 #import "kryon/drawing_props"
 #import "kryon/widget_palette"
 #import "kryon/TestDriver"
+#import "kryon/PageRoute"
 #import "std/file"
 #import "std/web"
+#import "std/c_string"
+#import "std/byte_text_linux"
 #import "entity/native_host"
 #import "topup"
+#import "topup_copy"
+
+// The browser's preferred language, such as "de-AT".
+BrowserLanguage :: (output: []u8) -> string {
+    navigator := WebGetObject(WebGlobal, WebName("navigator"))
+    if navigator == 0 { return "" }
+    handle := WebAsObject(WebGet(navigator, WebName("language")))
+    if handle == 0 { return "" }
+    length := WebCopyString(handle, output)
+    if length <= 0 || length >= cast(s32)output.count { return "" }
+    return TextFromBytes(output[:length])
+}
 
 #program_export
 main :: () -> s32 {
@@ -37,6 +52,10 @@ main :: () -> s32 {
     profile_bytes, found := ReadEntireFile("/entity.zx")
     defer { AppFileFree(profile_bytes) }
     if !found || !EntityHostOpen(profile_bytes, "/kryon-apps/profile", "dew", true) { return 1 }
+    // This page is the top-up: the Profile's Top up comes back here.
+    EntityHostTopUpUrl("")
+    language: [64]u8
+    TopupStart(TextFromCString(GetRouteQuery()), BrowserLanguage(language[:]))
     defer { unused EntityHostClose(); unused BundleStorageSync(false) }
     session := SessionOpen()
     if !SessionValid(session) { return 1 }
@@ -77,12 +96,13 @@ main :: () -> s32 {
                     .fill = ColorFromPacked(palette.background)})
             bounds := Rectangle.{viewport.x, viewport.y + 56.0, viewport.width, viewport.height - 56.0}
             if !EntityHostFrame(session, bounds, key, modifiers, input, true) { return 1 }
-            Text(session, TextProps.{.key = cast(u64)49002, .text = "Profile", .font = 20,
+            Text(session, TextProps.{.key = cast(u64)49002, .text = topup_copy.profile, .font = 20,
                     .bounds = Rectangle.{100.0, 12.0, viewport.width - 200.0, 36.0}})
-            if Button(session, ButtonProps.{.key = cast(u64)49001, .id = 49001, .label = "Back",
-                    .bounds = Rectangle.{8.0, 6.0, 76.0, 44.0}}) != 0 || key == 256 {
+            if Button(session, ButtonProps.{.key = cast(u64)49001, .id = 49001, .label = topup_copy.back,
+                    .bounds = Rectangle.{8.0, 6.0, 92.0, 44.0}}) != 0 || key == 256 {
                 if !EntityHostBack() && EntityHostSave() { profile = false }
             }
+            if EntityHostTopUpRequested() && EntityHostSave() { profile = false }
         } else {
             action := TopupFrame(session, viewport, input, PageNow())
             if action != TOPUP_NONE {

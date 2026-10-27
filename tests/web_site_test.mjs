@@ -1,6 +1,6 @@
 // Open dew.waozi.xyz's build in a private headless browser: the page must draw
 // without a failed frame, and its Sign in button must open the shared Profile.
-// Usage: node tests/web_site_test.mjs SITE_DIR
+// Usage: node tests/web_site_test.mjs SITE_DIR|URL
 import { spawn } from 'node:child_process';
 import { createServer } from 'node:http';
 import { access, mkdtemp, readFile, rm } from 'node:fs/promises';
@@ -8,8 +8,10 @@ import { tmpdir } from 'node:os';
 import { extname, join, normalize } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 
+// SITE_DIR is served locally; an https URL tests the deployed site instead.
 const site = process.argv[2];
-if (!site) throw new Error('Usage: node tests/web_site_test.mjs SITE_DIR');
+if (!site) throw new Error('Usage: node tests/web_site_test.mjs SITE_DIR|URL');
+const live = /^https:\/\//.test(site);
 const types = { '.html': 'text/html', '.js': 'text/javascript', '.wasm': 'application/wasm', '.json': 'application/json',
   '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg', '.webmanifest': 'application/manifest+json' };
 const server = createServer(async (request, response) => {
@@ -55,7 +57,7 @@ try {
   };
   await command('Runtime.enable'); await command('Page.enable');
   await command('Emulation.setDeviceMetricsOverride', { width: 1280, height: 800, deviceScaleFactor: 1, mobile: false });
-  await command('Page.navigate', { url: `http://127.0.0.1:${server.address().port}/` });
+  await command('Page.navigate', { url: live ? site : `http://127.0.0.1:${server.address().port}/` });
   let ready = false;
   const deadline = Date.now() + 60000;
   while (!ready && Date.now() < deadline) {

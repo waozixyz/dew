@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
   <title>Dew</title>
-  <meta name="description" content="Dew is the one currency for every Waozi app. Sign in with your Waozi profile and top up with Monero or almost any other coin.">
+  <meta name="description" content="Dew is the one currency for every Waozi app. Sign in with your profile and top up with Monero or almost any other coin.">
   <meta name="theme-color" content="#0e1a20">
   <link rel="canonical" href="https://dew.waozi.xyz/">
   <link rel="icon" href="icon.svg" type="image/svg+xml">
@@ -19,33 +19,100 @@
   <style>
     html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; overscroll-behavior: none; background: #0e1a20; color: #e8f3f7; }
     canvas { display: block; width: 100%; height: 100%; outline: none; touch-action: none; }
-    #loading { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px; background: #0e1a20; font: 600 16px/1.4 system-ui, sans-serif; transition: opacity .3s ease; }
+    #loading { position: fixed; inset: 0; overflow-y: auto; display: flex; align-items: center; justify-content: center; padding: 32px 20px; box-sizing: border-box; background: radial-gradient(circle at 75% 20%, #1d4e61, #0e1a20 60%); font: 400 17px/1.55 system-ui, sans-serif; transition: opacity .3s ease; }
     #loading.done { opacity: 0; pointer-events: none; }
-    #loading img { width: 64px; height: 64px; }
-    #loading .track { width: min(280px, 70vw); height: 6px; border-radius: 3px; background: #ffffff26; overflow: hidden; }
-    #loading .bar { width: 0; height: 100%; background: #2f9fc4; transition: width .2s ease; }
-    #loading .failed { display: none; color: #ffb4a8; text-align: center; padding: 0 24px; }
-    #loading.error .failed { display: block; }
+    .intro { width: min(520px, 100%); }
+    .intro header { display: flex; align-items: center; gap: 16px; }
+    .intro img { width: 56px; height: 56px; }
+    .intro h1 { margin: 0; font-size: 44px; line-height: 1; }
+    .intro .lede { margin: 18px 0 8px; font-size: 21px; font-weight: 600; }
+    .intro p { margin: 10px 0 0; color: #bcd6df; }
+    .track { width: min(520px, 100%); height: 6px; margin-top: 28px; border-radius: 3px; background: #ffffff26; overflow: hidden; }
+    .bar { width: 0; height: 100%; background: #2f9fc4; transition: width .2s ease; }
     #loading.error .track { display: none; }
+    #loading .status { width: min(520px, 100%); margin: 14px 0 0; color: #ffd8a8; }
+    #loading .retry { margin-top: 14px; padding: 10px 22px; border: 0; border-radius: 999px; background: #2f9fc4; color: #fff; font: 600 16px system-ui, sans-serif; cursor: pointer; }
+    #loading { flex-direction: column; }
   </style>
 </head>
 <body>
   <canvas id="canvas" tabindex="0"></canvas>
   <div id="loading" role="status" aria-live="polite">
-    <img src="icon.svg" alt="">
-    <div class="track"><div class="bar"></div></div>
-    <p class="failed">Dew could not start. Reload the page to try again.</p>
-    <noscript><p>Dew needs JavaScript and WebAssembly to run.</p></noscript>
+    <div class="intro" lang="en">
+      <header><img src="icon.svg" alt=""><h1>Dew</h1></header>
+      <p class="lede">One currency for every Waozi app.</p>
+      <p>Dew follows your profile into Inner Breeze, Arcade, Shovey and Apfelwurm. Unlock practices and storage, dress up your worm, and earn it by playing.</p>
+      <p>Top up with Monero in any amount, or from 100 Dew with Bitcoin, Ethereum, USDT and hundreds of other coins.</p>
+      <noscript><p>Dew needs JavaScript and WebAssembly to run.</p></noscript>
+    </div>
+    <div class="intro" lang="de" hidden>
+      <header><img src="icon.svg" alt=""><h1>Dew</h1></header>
+      <p class="lede">Eine Währung für alle Waozi-Apps.</p>
+      <p>Dew begleitet dein Profil in Inner Breeze, Arcade, Shovey und Apfelwurm. Schalte Übungen und Speicher frei, kleide deinen Wurm ein und verdiene es beim Spielen.</p>
+      <p>Lade es mit Monero in beliebiger Höhe auf oder ab 100 Dew mit Bitcoin, Ethereum, USDT und Hunderten anderer Coins.</p>
+    </div>
+    <div class="intro" lang="es" hidden>
+      <header><img src="icon.svg" alt=""><h1>Dew</h1></header>
+      <p class="lede">Una moneda para todas las apps de Waozi.</p>
+      <p>Dew acompaña a tu perfil en Inner Breeze, Arcade, Shovey y Apfelwurm. Desbloquea prácticas y almacenamiento, viste a tu gusano y gánalo jugando.</p>
+      <p>Recárgalo con Monero en cualquier cantidad, o desde 100 Dew con Bitcoin, Ethereum, USDT y cientos de monedas más.</p>
+    </div>
+    <div class="track" aria-hidden="true"><div class="bar"></div></div>
+    <p class="status" hidden></p>
+    <button type="button" class="retry" hidden></button>
   </div>
   <script>
     (function () {
       var loading = document.getElementById('loading');
       var bar = loading.querySelector('.bar');
-      function failed() { loading.classList.add('error'); }
+      var status = loading.querySelector('.status');
+      var retry = loading.querySelector('.retry');
+      // The intro speaks the page's language, as the app will: ?lang=, then the browser's.
+      var asked = /[?&]lang=(de|es|en)\b/.exec(location.search);
+      var language = (asked ? asked[1] : (navigator.language || 'en')).slice(0, 2).toLowerCase();
+      if (language !== 'de' && language !== 'es') language = 'en';
+      document.documentElement.lang = language;
+      loading.querySelectorAll('.intro').forEach(function (intro) { intro.hidden = intro.lang !== language; });
+      var words = {
+        en: { again: 'Dew did not load. Trying again in {s} s…', failed: 'Dew could not load. Check your connection and try again.', slow: 'Still loading… this can take a moment on a slow connection.', button: 'Try again' },
+        de: { again: 'Dew wurde nicht geladen. Neuer Versuch in {s} s …', failed: 'Dew konnte nicht geladen werden. Prüfe deine Verbindung und versuche es erneut.', slow: 'Wird noch geladen … bei einer langsamen Verbindung kann das dauern.', button: 'Erneut versuchen' },
+        es: { again: 'Dew no se cargó. Reintentando en {s} s…', failed: 'Dew no se pudo cargar. Revisa tu conexión e inténtalo de nuevo.', slow: 'Todavía cargando… puede tardar con una conexión lenta.', button: 'Reintentar' }
+      }[language];
+      function say(text) { status.textContent = text; status.hidden = false; }
+      function remembered() { try { return +sessionStorage.getItem('dew-load-retries') || 0; } catch (e) { return 3; } }
+      function remember(count) { try { sessionStorage.setItem('dew-load-retries', String(count)); } catch (e) {} }
+      retry.textContent = words.button;
+      retry.onclick = function () { remember(0); location.reload(); };
+      // A failed download, such as a server error while a new domain is
+      // set up, reloads the page by itself a few times before asking.
+      var ended = false;
+      function failed() {
+        if (ended) return;
+        ended = true;
+        loading.classList.add('error');
+        var tries = remembered();
+        retry.hidden = false;
+        if (tries >= 3) { say(words.failed); return; }
+        remember(tries + 1);
+        var seconds = 5;
+        say(words.again.replace('{s}', seconds));
+        var timer = setInterval(function () {
+          seconds -= 1;
+          if (seconds > 0) { say(words.again.replace('{s}', seconds)); return; }
+          clearInterval(timer);
+          location.reload();
+        }, 1000);
+      }
+      var slow = setTimeout(function () { if (!ended) say(words.slow); }, 25000);
       // The page reports ready once it is about to draw.
       function watch() {
-        if (window.Module && Module.profileReady) { loading.classList.add('done'); return; }
-        requestAnimationFrame(watch);
+        if (window.Module && Module.profileReady) {
+          clearTimeout(slow);
+          remember(0);
+          loading.classList.add('done');
+          return;
+        }
+        if (!ended) requestAnimationFrame(watch);
       }
       window.Module = {
         canvas: document.getElementById('canvas'),

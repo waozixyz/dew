@@ -73,12 +73,13 @@ XmrText :: (atomic: s64, output: []u8) -> string {
     return TextUntilNul(output)
 }
 
-// "about $29.54", or "" without a known price.
+// "$29.54", or "" without a known price.
 UsdText :: (cents: s64, output: []u8) -> string {
     if cents <= 0 || output.count < 32 { return "" }
     digits: [24]u8
     at: s64 = 0
-    for byte: "about $" { output[at] = byte; at += 1 }
+    output[at] = cast(u8)36
+    at += 1
     for byte: FormatInteger(cents / 100, digits[:]) { output[at] = byte; at += 1 }
     output[at] = cast(u8)46
     output[at + 1] = cast(u8)(48 + cents % 100 / 10)
@@ -144,13 +145,16 @@ MoneroUri :: (address: string, atomic: s64, output: []u8) -> string {
 // it and sends exactly atomic piconero to the account's own address, where
 // the node credits the Dew as for any Monero payment. Monero itself is paid
 // on the page, so AnonPay offers only the other coins.
-TrocadorUrl :: (address: string, atomic: s64, dew: s64, output: []u8) -> string {
+TrocadorUrl :: (address: string, atomic: s64, dew: s64, language: string, output: []u8) -> string {
     amount: [48]u8
     digits: [24]u8
     at: s64 = 0
     if !AddressSafe(address) || atomic < TROCADOR_MINIMUM_ATOMIC || dew <= 0 ||
     !DewFormat(atomic, PICONERO, amount[:]) { return "" }
-    if !Append(output, *at, "https://trocador.app/anonpay/?ticker_to=xmr&network_to=Mainnet&address=") ||
+    // Trocador shows its checkout in German or Spanish under /de/ and /es/.
+    if !Append(output, *at, "https://trocador.app/") ||
+    ((language == "de" || language == "es") && (!Append(output, *at, language) || !Append(output, *at, "/"))) ||
+    !Append(output, *at, "anonpay/?ticker_to=xmr&network_to=Mainnet&address=") ||
     !Append(output, *at, address) || !Append(output, *at, "&amount=") ||
     !Append(output, *at, TextUntilNul(amount[:])) || !Append(output, *at, "&name=Dew&description=") ||
     !Append(output, *at, FormatInteger(dew, digits[:])) ||
@@ -158,4 +162,103 @@ TrocadorUrl :: (address: string, atomic: s64, dew: s64, output: []u8) -> string 
         return ""
     }
     return TextUntilNul(output)
+}
+
+// A template with %1, %2 and %3 filled in, cut short only if output is full.
+Fill :: (template: string, first: string, second: string, third: string, output: []u8) -> string {
+    at: s64 = 0
+    index: s64 = 0
+    while index < template.count {
+        byte := template[index]
+        value := ""
+        placeholder := false
+        if byte == cast(u8)37 && index + 1 < template.count {
+            next := template[index + 1]
+            placeholder = next == cast(u8)49 || next == cast(u8)50 || next == cast(u8)51
+            value = ifx next == cast(u8)49 then first else ifx next == cast(u8)50 then second else third
+        }
+        if placeholder {
+            if !Append(output, *at, value) { break }
+            index += 2
+            continue
+        }
+        if at + 1 >= output.count { break }
+        output[at] = byte
+        at += 1
+        output[at] = cast(u8)0
+        index += 1
+    }
+    if output.count > 0 && at < output.count { output[at] = cast(u8)0 }
+    return TextUntilNul(output)
+}
+
+// The value of name in a page query such as "?account=abc&lang=de"; ""
+// when it is missing, empty or holds anything but letters, digits, '.',
+// '_' and '-'.
+QueryValue :: (query: string, name: string, output: []u8) -> string {
+    start: s64 = ifx query.count > 0 && query[0] == cast(u8)63 then 1 else 0
+    index := start
+    while index <= query.count {
+        if index == query.count || query[index] == cast(u8)38 {
+            part := query[start:index]
+            if part.count > name.count && part[:name.count] == name && part[name.count] == cast(u8)61 {
+                value := part[name.count + 1:]
+                if !ReferenceValid(value) || !CopyCString(value, output) { return "" }
+                return TextUntilNul(output)
+            }
+            start = index + 1
+        }
+        index += 1
+    }
+    return ""
+}
+
+// An account ID or alias as a link may name it.
+ReferenceValid :: (value: string) -> bool {
+    if value.count == 0 || value.count > 64 { return false }
+    for byte: value {
+        digit := byte >= cast(u8)48 && byte <= cast(u8)57
+        letter := (byte >= cast(u8)65 && byte <= cast(u8)90) || (byte >= cast(u8)97 && byte <= cast(u8)122)
+        if !digit && !letter && byte != cast(u8)46 && byte != cast(u8)95 && byte != cast(u8)45 { return false }
+    }
+    return true
+}
+
+// The public GET /api/v1/tokens/purchases/monero/address/REFERENCE answer:
+// whose address it is and where to pay.
+DewParseRecipient :: (json: string, funding: *DewFunding, account: []u8, alias: []u8) -> bool {
+    id: [65]u8
+    if ReadStringText(json, FieldAt(json, 0, "account_id"), id[:]) != 64 ||
+    !DewParseFunding(json, TextUntilNul(id[:]), funding) || !CopyCString(TextUntilNul(id[:]), account) { return false }
+    if alias.count > 0 { alias[0] = cast(u8)0 }
+    if ReadStringText(json, FieldAt(json, 0, "alias"), alias) < 0 && alias.count > 0 { alias[0] = cast(u8)0 }
+    return true
+}
+
+DewDeposit :: struct {
+    atomic: s64
+    units: s64
+    confirmations: s64
+    status: [24]u8
+}
+
+// The newest deposits from {"deposits":[…]}, at most output.count; -1 when
+// the answer is not a deposit list.
+DewParseDeposits :: (json: string, output: []DewDeposit) -> s32 {
+    list := FieldAt(json, 0, "deposits")
+    count := ArrayCount(json, list)
+    if json.count == 0 || count < 0 { return -1 }
+    used: s32 = 0
+    for index: 0..count - 1 {
+        if cast(s64)used >= output.count { break }
+        at := ElementAt(json, list, cast(s32)index)
+        deposit: DewDeposit
+        if !DewInteger(json, FieldAt(json, at, "amount_atomic"), *deposit.atomic) ||
+        !DewInteger(json, FieldAt(json, at, "confirmations"), *deposit.confirmations) ||
+        ReadStringText(json, FieldAt(json, at, "status"), deposit.status[:]) <= 0 { continue }
+        if !DewInteger(json, FieldAt(json, at, "token_units"), *deposit.units) { deposit.units = 0 }
+        output[used] = deposit
+        used += 1
+    }
+    return used
 }

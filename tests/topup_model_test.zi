@@ -1,5 +1,7 @@
 #import "topup_model"
 #import "std/c_string"
+#import "std/text_buffer"
+#import "entity/dew_model"
 
 ADDRESS :: "8AbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCd"
 
@@ -27,8 +29,8 @@ main :: () -> s32 {
     if XmrText(1000000000000, text[:]) != "1 XMR" { return 11 }
     if UsdCents(50000000000, 59078) != 2953 { return 12 }
     if UsdCents(3000000000000000, 59078) != 177234000 { return 13 }
-    if UsdText(2953, text[:]) != "about $29.53" { return 14 }
-    if UsdText(5, text[:]) != "about $0.05" || UsdText(0, text[:]) != "" { return 15 }
+    if UsdText(2953, text[:]) != "$29.53" { return 14 }
+    if UsdText(5, text[:]) != "$0.05" || UsdText(0, text[:]) != "" { return 15 }
 
     if DewTyped("250") != 250 || DewTyped("") != 0 || DewTyped("12a") != 0 || DewTyped("12345678") != 0 { return 16 }
 
@@ -43,11 +45,41 @@ main :: () -> s32 {
     if MoneroUri(ADDRESS, 0, link[:]) != "monero:8AbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCd" { return 22 }
     if MoneroUri("8bad&address", 1, link[:]) != "" { return 23 }
     expected := "https://trocador.app/anonpay/?ticker_to=xmr&network_to=Mainnet&address=8AbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCd&amount=0.05&name=Dew&description=500%20Dew&simple_mode=True&remove_direct_pay=True&buttonbgcolor=2f9fc4&textcolor=ffffff"
-    if TrocadorUrl(ADDRESS, 50000000000, 500, link[:]) != expected { return 24 }
+    if TrocadorUrl(ADDRESS, 50000000000, 500, "en", link[:]) != expected { return 24 }
     // Below Trocador's floor there is no link; Monero takes any amount.
-    if TrocadorUrl(ADDRESS, TROCADOR_MINIMUM_ATOMIC - 1, 99, link[:]) != "" { return 25 }
-    if TrocadorUrl("8AbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCd&email=x", 50000000000, 500, link[:]) != "" { return 26 }
+    if TrocadorUrl(ADDRESS, TROCADOR_MINIMUM_ATOMIC - 1, 99, "en", link[:]) != "" { return 25 }
+    if TrocadorUrl("8AbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCd&email=x", 50000000000, 500, "en", link[:]) != "" { return 26 }
     short: [40]u8
-    if TrocadorUrl(ADDRESS, 50000000000, 500, short[:]) != "" { return 27 }
+    if TrocadorUrl(ADDRESS, 50000000000, 500, "en", short[:]) != "" { return 27 }
+    if TrocadorUrl(ADDRESS, 50000000000, 500, "de", link[:]) != "https://trocador.app/de/anonpay/?ticker_to=xmr&network_to=Mainnet&address=8AbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCd&amount=0.05&name=Dew&description=500%20Dew&simple_mode=True&remove_direct_pay=True&buttonbgcolor=2f9fc4&textcolor=ffffff" { return 28 }
+
+    filled: [256]u8
+    if Fill("%1 · %2 of %3 confirmations", "0.05 XMR", "3", "10", filled[:]) != "0.05 XMR · 3 of 10 confirmations" { return 30 }
+    if Fill("Dew kommt nach %1 Bestätigungen an", "10", "", "", filled[:]) != "Dew kommt nach 10 Bestätigungen an" { return 31 }
+    if Fill("100% sure, %4 stays", "x", "", "", filled[:]) != "100% sure, %4 stays" { return 32 }
+    tiny: [8]u8
+    if Fill("%1 Dew", "123456789", "", "", tiny[:]) != "" { return 33 }
+
+    value: [80]u8
+    if QueryValue("?account=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&lang=de", "account", value[:]) != "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" { return 40 }
+    if QueryValue("?account=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&lang=de", "lang", value[:]) != "de" { return 41 }
+    if QueryValue("lang=es", "lang", value[:]) != "es" || QueryValue("?mini", "account", value[:]) != "" { return 42 }
+    if QueryValue("?account=a%20b", "account", value[:]) != "" || QueryValue("?accounts=x", "account", value[:]) != "" { return 43 }
+    if !ReferenceValid("emerald") || ReferenceValid("") || ReferenceValid("a b") { return 44 }
+
+    funding: DewFunding
+    account: [65]u8
+    alias: [40]u8
+    recipient := "{\"account_id\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"alias\":\"emerald\",\"asset_id\":\"waozi:token\",\"address\":\"8AbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCd\",\"uri\":\"monero:8AbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCdEfGhJkAbCd\",\"network\":\"mainnet\",\"confirmations_required\":10,\"minimum_atomic_amount\":1,\"rate\":{\"xmr_atomic_units\":1000000000000,\"token_units\":10000000000}}"
+    if !DewParseRecipient(recipient, *funding, account[:], alias[:]) { return 50 }
+    if TextUntilNul(account[:]) != "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" || TextUntilNul(alias[:]) != "emerald" || funding.confirmations != 10 || funding.minimum != 1 { return 51 }
+    if DewParseRecipient("{\"account_id\":\"short\"}", *funding, account[:], alias[:]) { return 52 }
+
+    deposits: [3]DewDeposit
+    list := "{\"deposits\":[{\"tx_id\":\"t1\",\"amount_atomic\":50000000000,\"confirmations\":3,\"status\":\"confirming\",\"first_seen_at\":\"2026-10-27T17:00:00Z\"},{\"tx_id\":\"t0\",\"amount_atomic\":10000000000,\"token_units\":100000000,\"confirmations\":12,\"status\":\"credited\",\"first_seen_at\":\"2026-10-26T17:00:00Z\"}]}"
+    if DewParseDeposits(list, deposits[:]) != 2 { return 60 }
+    if deposits[0].atomic != 50000000000 || deposits[0].confirmations != 3 || TextUntilNul(deposits[0].status[:]) != "confirming" || deposits[0].units != 0 { return 61 }
+    if deposits[1].units != 100000000 || TextUntilNul(deposits[1].status[:]) != "credited" { return 62 }
+    if DewParseDeposits("{\"deposits\":[]}", deposits[:]) != 0 || DewParseDeposits("{}", deposits[:]) != -1 || DewParseDeposits("", deposits[:]) != -1 { return 63 }
     return 0
 }

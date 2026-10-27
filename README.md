@@ -2,7 +2,7 @@
 
 [dew.waozi.xyz](https://dew.waozi.xyz) is one focused page for topping up
 Dew, the currency every Waozi app shares: Inner Breeze, Arcade, Shovey,
-Apfelwurm and the rest. You sign in with the same Waozi profile those apps
+Apfelwurm and the rest. You sign in with the same profile those apps
 use, see your balance, and pay:
 
 - **Monero, any amount.** Each account has its own Monero address on the
