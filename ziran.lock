@@ -109,7 +109,7 @@
     "name": "Dew"
   },
   "toolchain": {
-    "commit": "6c952032c6f337fba5a6b41bd1acbf114ed84fb4",
+    "commit": "17c9c54dad73af2d1e2883201da8988d553fe3b8",
     "ref": "master",
     "url": "https://github.com/ziranlang/ziran.git"
   }
