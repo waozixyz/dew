@@ -8,11 +8,11 @@ ref = "master"
 
 [dependencies.kryon]
 git = "https://github.com/kryonlabs/kryon.git"
-ref = "master"
+ref = "ead3eb7aa63535447a1116ecae7bb4d712d72034"
 
 [dependencies.entity]
 git = "https://github.com/waozixyz/entity.git"
-ref = "master"
+ref = "2d12bfca10e09e83ac540cc5fd85299b8438150a"
 
 [dependencies.qrcode]
 git = "https://github.com/ziranlang/qrcode.git"
