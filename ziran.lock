@@ -2,6 +2,23 @@
   "format": 1,
   "packages": [
     {
+      "commit": "907e90ddd4c78f02e0d49e90384e4197f7dcdf26",
+      "dependencies": {},
+      "id": "p0002f862b297522d",
+      "name": "monocypher",
+      "ref": "master",
+      "source": true,
+      "url": "https://github.com/LoupVaillant/Monocypher.git"
+    },
+    {
+      "commit": "2d12bfca10e09e83ac540cc5fd85299b8438150a",
+      "dependencies": {"curl": "p1ca0e8d3c19dbe4c", "daochi_client": "p6af0b5bd9fd0cd31", "kryon": "p79167729f20b4a95", "monocypher": "p0002f862b297522d", "oqs": "p7098ac9cd92f7e5f", "qrcode": "p0dfa70137405b096", "zlib": "p1dff88558141400b"},
+      "id": "p0db98890a496208a",
+      "name": "Entity",
+      "ref": "master",
+      "url": "https://github.com/waozixyz/entity.git"
+    },
+    {
       "commit": "2944b2e668e735438d8ce24e47a39be3f5c36af5",
       "dependencies": {},
       "id": "p0dfa70137405b096",
@@ -10,12 +27,22 @@
       "url": "https://github.com/ziranlang/qrcode.git"
     },
     {
-      "commit": "0931212f92d5f1a3f8b1be80abab7a9695bda50e",
-      "dependencies": {"raylib": "p5a77c9c35110e925"},
-      "id": "p3127065409ca96f6",
-      "name": "kryon",
-      "ref": "master",
-      "url": "https://github.com/kryonlabs/kryon.git"
+      "commit": "19b299005fbe2d895f4ad525cfdae62a2220c3ea",
+      "dependencies": {},
+      "id": "p1ca0e8d3c19dbe4c",
+      "name": "curl",
+      "ref": "19b299005fbe2d895f4ad525cfdae62a2220c3ea",
+      "source": true,
+      "url": "https://github.com/curl/curl.git"
+    },
+    {
+      "commit": "51b7f2abdade71cd9bb0e7a373ef2610ec6f9daf",
+      "dependencies": {},
+      "id": "p1dff88558141400b",
+      "name": "zlib",
+      "ref": "51b7f2abdade71cd9bb0e7a373ef2610ec6f9daf",
+      "source": true,
+      "url": "https://github.com/madler/zlib.git"
     },
     {
       "commit": "fafa2cea97d0cb379d832086ba45a989fa6f9c8e",
@@ -27,37 +54,46 @@
       "url": "https://github.com/raysan5/raylib.git"
     },
     {
+      "commit": "1844042d1ca751e62e61df7617dba19c98588339",
+      "dependencies": {},
+      "id": "p651a2c7a393977c0",
+      "name": "libwebp",
+      "ref": "1844042d1ca751e62e61df7617dba19c98588339",
+      "source": true,
+      "url": "https://github.com/webmproject/libwebp.git"
+    },
+    {
+      "commit": "970d5e44b1702158cb16469892da6ff50f142427",
+      "dependencies": {"crypto": "pc23fbf455e97614d", "oqs": "p7098ac9cd92f7e5f"},
+      "id": "p6af0b5bd9fd0cd31",
+      "name": "DaochiClient",
+      "ref": "970d5e44b1702158cb16469892da6ff50f142427",
+      "url": "https://github.com/ziranlang/daochi-client.git"
+    },
+    {
       "commit": "22d2ddbdc236796953c905a05a2cebf5ab1b4ff3",
-      "dependencies": {"liboqs": "pe86510e9fb3fef51"},
+      "dependencies": {"liboqs": "p7bc48564c6b606fe"},
       "id": "p7098ac9cd92f7e5f",
       "name": "Oqs",
       "ref": "master",
       "url": "https://github.com/ziranlang/oqs.git"
     },
     {
-      "commit": "f5f0a19a5dc6c14a49adb3cd63ea79a60f6ba77b",
+      "commit": "ead3eb7aa63535447a1116ecae7bb4d712d72034",
+      "dependencies": {"libwebp": "p651a2c7a393977c0", "raylib": "p5a77c9c35110e925"},
+      "id": "p79167729f20b4a95",
+      "name": "kryon",
+      "ref": "master",
+      "url": "https://github.com/kryonlabs/kryon.git"
+    },
+    {
+      "commit": "619888d404e7d7e441921702c41a5838a8981408",
       "dependencies": {},
-      "id": "p809b4d31a48625a3",
-      "name": "monocypher",
-      "ref": "master",
+      "id": "p7bc48564c6b606fe",
+      "name": "liboqs",
+      "ref": "main",
       "source": true,
-      "url": "https://github.com/LoupVaillant/Monocypher.git"
-    },
-    {
-      "commit": "25d9f649c43a8de44a5fea602d2835e33e6ca999",
-      "dependencies": {"crypto": "pc23fbf455e97614d", "oqs": "p7098ac9cd92f7e5f"},
-      "id": "p9972fcdd2d5ba999",
-      "name": "DaochiClient",
-      "ref": "master",
-      "url": "https://github.com/ziranlang/daochi-client.git"
-    },
-    {
-      "commit": "7d37be6e1f0643c01b35545e42e48c633f19a90d",
-      "dependencies": {"daochi_client": "p9972fcdd2d5ba999", "kryon": "p3127065409ca96f6", "monocypher": "p809b4d31a48625a3", "qrcode": "p0dfa70137405b096"},
-      "id": "p6feeecb5bfff3686",
-      "name": "Entity",
-      "ref": "master",
-      "url": "https://github.com/waozixyz/entity.git"
+      "url": "https://github.com/open-quantum-safe/liboqs.git"
     },
     {
       "commit": "944826f70779a6b6cd53f6b06a75b36f4d8a2558",
@@ -66,19 +102,10 @@
       "name": "crypto",
       "ref": "master",
       "url": "https://github.com/ziranlang/crypto.git"
-    },
-    {
-      "commit": "48955d1117ed6207a12d2a4c9e4162283d3420a5",
-      "dependencies": {},
-      "id": "pe86510e9fb3fef51",
-      "name": "liboqs",
-      "ref": "main",
-      "source": true,
-      "url": "https://github.com/open-quantum-safe/liboqs.git"
     }
   ],
   "root": {
-    "dependencies": {"entity": "p6feeecb5bfff3686", "kryon": "p3127065409ca96f6", "qrcode": "p0dfa70137405b096"},
+    "dependencies": {"entity": "p0db98890a496208a", "kryon": "p79167729f20b4a95", "qrcode": "p0dfa70137405b096"},
     "name": "Dew"
   },
   "toolchain": {

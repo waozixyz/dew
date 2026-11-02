@@ -1,5 +1,9 @@
 # Changelog
 
+## [Unreleased]
+
+- Sign-in uses the latest Entity, with passphrase-only account backups.
+
 ## [0.2.3] - 2026-10-27
 
 - Payments now show under Activity at the bottom of the page, with the day each one arrived and what became of it. The section stays hidden until there is a payment.
