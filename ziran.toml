@@ -4,15 +4,15 @@ module_roots = ["src", "tests"]
 
 [toolchain]
 git = "https://github.com/ziranlang/ziran.git"
-ref = "master"
+ref = "e4e8efa4a92f36e2fb0cea1d56b11471afa68621"
 
 [dependencies.kryon]
 git = "https://github.com/kryonlabs/kryon.git"
-ref = "ead3eb7aa63535447a1116ecae7bb4d712d72034"
+ref = "7865957626e67e6c291e3db3b474c6082691d6c6"
 
 [dependencies.entity]
 git = "https://github.com/waozixyz/entity.git"
-ref = "2d12bfca10e09e83ac540cc5fd85299b8438150a"
+ref = "7e39f9fa43e0bde4bcc2426c79579e4f16c3749a"
 
 [dependencies.qrcode]
 git = "https://github.com/ziranlang/qrcode.git"

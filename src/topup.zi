@@ -39,6 +39,7 @@
 TOPUP_NONE :: 0
 TOPUP_SIGN_IN :: 1
 TOPUP_PROFILE :: 2
+TOPUP_REFERRALS :: 3
 
 DEW_BACKGROUND :: 0x0e1a20ff
 DEW_CARD :: 0x172a33ff
@@ -286,6 +287,12 @@ TopupFrame :: (session: Session, viewport: Rectangle, input: TextFieldInput, now
     }
     y += 62.0
     Line(session, 60005, copy.tagline, x, *y, column, 17, 26.0)
+    if Button(session, ButtonProps.{.key = cast(u64)60006, .id = 60006, .label = copy.referrals,
+            .bounds = Rectangle.{x, y, column, 44.0}, .tone = ButtonTone.ButtonToneAccent,
+            .emphasis = ButtonEmphasis.ButtonEmphasisSoft}) != 0 {
+        action = TOPUP_REFERRALS
+    }
+    y += 58.0
 
     // Whose Dew, and the balance.
     inner := column - 36.0

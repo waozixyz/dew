@@ -7,9 +7,9 @@
   <meta name="description" content="Dew is the one currency for every Waozi app. Sign in with your profile and top up with Monero or almost any other coin.">
   <meta name="theme-color" content="#0e1a20">
   <link rel="canonical" href="https://dew.waozi.xyz/">
-  <link rel="icon" href="icon.svg" type="image/svg+xml">
-  <link rel="apple-touch-icon" href="apple-touch-icon.png">
-  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="manifest" href="/manifest.webmanifest">
   <meta property="og:type" content="website">
   <meta property="og:url" content="https://dew.waozi.xyz/">
   <meta property="og:title" content="Dew">
@@ -33,26 +33,41 @@
     #loading .status { width: min(520px, 100%); margin: 14px 0 0; color: #ffd8a8; }
     #loading .retry { margin-top: 14px; padding: 10px 22px; border: 0; border-radius: 999px; background: #2f9fc4; color: #fff; font: 600 16px system-ui, sans-serif; cursor: pointer; }
     #loading { flex-direction: column; }
+    #referral-landing { position: fixed; inset: 0; z-index: 2; overflow: auto; padding: 32px max(20px, calc((100vw - 560px)/2)); background: #0e1a20; font: 17px/1.6 system-ui, sans-serif; }
+    #referral-landing h1 { font-size: 30px; }
+    #referral-code { display: block; overflow-wrap: anywhere; font-size: 24px; user-select: all; }
+    #referral-landing button { margin: 8px 8px 8px 0; padding: 12px 20px; border: 1px solid #2f9fc4; border-radius: 24px; background: #223a45; color: #e8f3f7; font: inherit; cursor: pointer; }
+    #referral-landing[hidden], #loading[hidden], #canvas[hidden], #referral-landing button[hidden] { display: none; }
   </style>
 </head>
 <body>
   <canvas id="canvas" tabindex="0"></canvas>
+  <section id="referral-landing" hidden aria-labelledby="referral-title">
+    <h1 id="referral-title"></h1>
+    <p id="referral-gift"></p>
+    <p id="referral-code-label"></p>
+    <code id="referral-code"></code>
+    <p id="referral-manual"></p>
+    <p id="referral-terms"></p>
+    <button id="referral-open" type="button"></button>
+    <button id="referral-forget" type="button"></button>
+  </section>
   <div id="loading" role="status" aria-live="polite">
     <div class="intro" lang="en">
-      <header><img src="icon.svg" alt=""><h1>Dew</h1></header>
+      <header><img src="/icon.svg" alt=""><h1>Dew</h1></header>
       <p class="lede">One currency for every Waozi app.</p>
       <p>Dew follows your profile into Inner Breeze, Arcade, Shovey and Apfelwurm. Unlock practices and storage, dress up your worm, and earn it by playing.</p>
       <p>Top up with Monero in any amount, or from 100 Dew with Bitcoin, Ethereum, USDT and hundreds of other coins.</p>
       <noscript><p>Dew needs JavaScript and WebAssembly to run.</p></noscript>
     </div>
     <div class="intro" lang="de" hidden>
-      <header><img src="icon.svg" alt=""><h1>Dew</h1></header>
+      <header><img src="/icon.svg" alt=""><h1>Dew</h1></header>
       <p class="lede">Eine Währung für alle Waozi-Apps.</p>
       <p>Dew begleitet dein Profil in Inner Breeze, Arcade, Shovey und Apfelwurm. Schalte Übungen und Speicher frei, kleide deinen Wurm ein und verdiene es beim Spielen.</p>
       <p>Lade es mit Monero in beliebiger Höhe auf oder ab 100 Dew mit Bitcoin, Ethereum, USDT und Hunderten anderer Coins.</p>
     </div>
     <div class="intro" lang="es" hidden>
-      <header><img src="icon.svg" alt=""><h1>Dew</h1></header>
+      <header><img src="/icon.svg" alt=""><h1>Dew</h1></header>
       <p class="lede">Una moneda para todas las apps de Waozi.</p>
       <p>Dew acompaña a tu perfil en Inner Breeze, Arcade, Shovey y Apfelwurm. Desbloquea prácticas y almacenamiento, viste a tu gusano y gánalo jugando.</p>
       <p>Recárgalo con Monero en cualquier cantidad, o desde 100 Dew con Bitcoin, Ethereum, USDT y cientos de monedas más.</p>
@@ -61,6 +76,7 @@
     <p class="status" hidden></p>
     <button type="button" class="retry" hidden></button>
   </div>
+  <script src="/referral.js"></script>
   <script>
     (function () {
       var loading = document.getElementById('loading');
@@ -110,11 +126,15 @@
           clearTimeout(slow);
           remember(0);
           loading.classList.add('done');
+          if (window.DewReferral) DewReferral.ready();
           return;
         }
         if (!ended) requestAnimationFrame(watch);
       }
       window.Module = {
+        referralOnly: !!(window.DewReferral && !DewReferral.fundingAllowed),
+        referralCode: window.DewReferral ? DewReferral.code : '',
+        referralRequested: !!(window.DewReferral && DewReferral.requested),
         canvas: document.getElementById('canvas'),
         setStatus: function (text) {
           var match = /\((\d+(?:\.\d+)?)\/(\d+)\)/.exec(text || '');
@@ -125,7 +145,7 @@
       };
       function start() {
         var script = document.createElement('script');
-        script.src = 'runtime.js';
+        script.src = '/runtime.js';
         script.onerror = failed;
         document.body.appendChild(script);
         watch();

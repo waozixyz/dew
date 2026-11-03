@@ -28,6 +28,7 @@ using Canvas :: #import "kryon/Canvas";
 #import "std/c_string"
 #import "std/byte_text_linux"
 #import "entity/native_host"
+#import "entity/referral_native"
 #import "topup"
 #import "topup_copy"
 
@@ -54,19 +55,34 @@ main :: () -> s32 {
     if !found || !EntityHostOpen(profile_bytes, "/kryon-apps/profile", "dew", true) { return 1 }
     // This page is the top-up: the Profile's Top up comes back here.
     EntityHostTopUpUrl("")
+    // This host is the direct web edition. Link hints only hide purchase UI;
+    // they never become the provider's trusted app/edition identity.
+    unused EntityReferralsSource("direct", "dew")
+    referral_only := WebAsBool(WebGet(WebGetObject(WebGlobal, WebName("Module")), WebName("referralOnly")))
+    if referral_only { EntityHostAllowFunding(false) }
     language: [64]u8
     TopupStart(TextFromCString(GetRouteQuery()), BrowserLanguage(language[:]))
+    EntityHostReferralsLocale(topup_copy.language)
     defer { unused EntityHostClose(); unused BundleStorageSync(false) }
     session := SessionOpen()
     if !SessionValid(session) { return 1 }
     defer { unused SessionClose(session) }
     palette := DewPalette()
     unused WidgetPaletteUse(session, palette)
-    profile := false
+    profile := referral_only
     saved := PageNow()
     WebSet(WebGetObject(WebGlobal, WebName("Module")), WebName("profileReady"), WebBool(true))
     while PollCanvas() {
         scope := WebScope()
+        module := WebGetObject(WebGlobal, WebName("Module"))
+        if WebAsBool(WebGet(module, WebName("referralRequested"))) {
+            code: [129]u8
+            handle := WebAsObject(WebGet(module, WebName("referralCode")))
+            length := WebCopyString(handle, code[:])
+            if length < 0 || length >= cast(s32)code.count { length = 0 }
+            if EntityHostReferrals(TextFromBytes(code[:length])) { profile = true }
+            WebSet(module, WebName("referralRequested"), WebBool(false))
+        }
         WebSet(WebGetObject(WebGlobal, WebName("Module")), WebName("profileVisible"), WebBool(profile))
         BeginCanvasFrame()
         viewport := CanvasViewport()
@@ -79,7 +95,7 @@ main :: () -> s32 {
         typed: [1024]u8
         text := TypedTextTake(session, typed[:])
         EntityHostPump()
-        TopupPump(PageNow())
+        if !referral_only { TopupPump(PageNow()) }
         TreePointerUpdate(session, pointer)
         TreeSecondaryPointerUpdate(session, PollSecondaryPointer())
         PointerWheelSend(session, pointer.x, pointer.y, wheel)
@@ -100,14 +116,17 @@ main :: () -> s32 {
                     .bounds = Rectangle.{100.0, 12.0, viewport.width - 200.0, 36.0}})
             if Button(session, ButtonProps.{.key = cast(u64)49001, .id = 49001, .label = topup_copy.back,
                     .bounds = Rectangle.{8.0, 6.0, 92.0, 44.0}}) != 0 || key == 256 {
-                if !EntityHostBack() && EntityHostSave() { profile = false }
+                if !EntityHostBack() && EntityHostSave() {
+                    if referral_only { unused EntityHostReferrals("") } else { profile = false }
+                }
             }
-            if EntityHostTopUpRequested() && EntityHostSave() { profile = false }
+            if EntityHostTopUpRequested() && EntityHostSave() && !referral_only { profile = false }
         } else {
             action := TopupFrame(session, viewport, input, PageNow())
             if action != TOPUP_NONE {
                 EntityHostReload()
                 if action == TOPUP_SIGN_IN { unused EntityHostAccount() }
+                if action == TOPUP_REFERRALS { unused EntityHostReferrals("") }
                 profile = true
             }
         }

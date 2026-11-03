@@ -10,6 +10,7 @@ all: web
 test: build/model-test/test
 	env -u DISPLAY -u WAYLAND_DISPLAY build/model-test/test
 	$(ZIRAN) fmt --check src/*.zi src/web/*.zi tests/*.zi
+	python3 tests/web_site_test.py --landing-only
 
 build/model-test/test: src/topup_model.zi tests/topup_model_test.zi ziran.lock
 	rm -rf build/model-test
@@ -25,14 +26,15 @@ web:
 	ZIRAN='$(TOOLCHAIN)/build/bin/ziran' python3 '$(ENTITY)/scripts/build-web.py' \
 		--profile '$(ENTITY)/build/entity.zx' --output build/web/runtime.html
 	rm -f build/web/runtime.html
-	cp site/index.html site/_headers site/icon.svg site/manifest.webmanifest site/og.jpg site/icon-512.png site/apple-touch-icon.png build/web/
+	cp site/index.html site/_headers site/_redirects site/icon.svg site/manifest.webmanifest site/og.jpg site/icon-512.png site/apple-touch-icon.png build/web/
+	cp src/web/referral.js build/web/
 	printf '{"version":"%s","revision":"%s"}\n' \
 		"$$(python3 -c 'import json; print(json.load(open("version.json"))["version"])')" \
 		"$$(git rev-parse HEAD)" > build/web/version.json
 
 # Opens the built site in a private headless browser.
 web-test:
-	env -u DISPLAY -u WAYLAND_DISPLAY -u XAUTHORITY -u DBUS_SESSION_BUS_ADDRESS node tests/web_site_test.mjs build/web
+	python3 tests/web_site_test.py build/web
 
 serve:
 	python3 -m http.server $(PORT) --bind 127.0.0.1 --directory build/web

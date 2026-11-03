@@ -5,6 +5,7 @@ TopupCopy :: struct {
     tagline: string
     sign_in: string
     profile: string
+    referrals: string
     back: string
     sign_in_title: string
     sign_in_hint: string
@@ -53,6 +54,7 @@ TopupEnglish :: () -> TopupCopy {
         .tagline = "One currency for every Waozi app. Top it up here with Monero or almost any other coin.",
         .sign_in = "Sign in",
         .profile = "Profile",
+        .referrals = "My referrals · accept an invitation",
         .back = "Back",
         .sign_in_title = "Sign in with your profile to see your Dew and top it up.",
         .sign_in_hint = "Use the same profile as in Inner Breeze, Arcade or Shovey: link this browser from the app, or import your key.",
@@ -101,6 +103,7 @@ TopupGerman :: () -> TopupCopy {
         .tagline = "Eine Währung für alle Waozi-Apps. Lade sie hier mit Monero oder fast jedem anderen Coin auf.",
         .sign_in = "Anmelden",
         .profile = "Profil",
+        .referrals = "Meine Empfehlungen · Einladung annehmen",
         .back = "Zurück",
         .sign_in_title = "Melde dich mit deinem Profil an, um dein Dew zu sehen und aufzuladen.",
         .sign_in_hint = "Nutze dasselbe Profil wie in Inner Breeze, Arcade oder Shovey: Verknüpfe diesen Browser in der App oder importiere deinen Schlüssel.",
@@ -149,6 +152,7 @@ TopupSpanish :: () -> TopupCopy {
         .tagline = "Una moneda para todas las apps de Waozi. Recárgala aquí con Monero o casi cualquier otra moneda.",
         .sign_in = "Iniciar sesión",
         .profile = "Perfil",
+        .referrals = "Mis referidos · aceptar una invitación",
         .back = "Atrás",
         .sign_in_title = "Inicia sesión con tu perfil para ver tu Dew y recargarlo.",
         .sign_in_hint = "Usa el mismo perfil que en Inner Breeze, Arcade o Shovey: vincula este navegador desde la app o importa tu clave.",

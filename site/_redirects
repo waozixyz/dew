@@ -1,0 +1,4 @@
+# Referral paths load the same app. Absolute asset URLs work at every depth.
+/invite/* /index.html 200
+/invite /index.html 200
+/referrals /index.html 200
